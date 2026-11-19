@@ -542,6 +542,7 @@ function renderRoadmap() {
                     ${elecBadge}
                   </div>
                   <div class="card-title">${item.title}</div>
+                  ${DB.courseMap[item.courseId]?.title_en ? `<div class="card-title-en">(${DB.courseMap[item.courseId].title_en})</div>` : ''}
                 </div>
                 <div onclick="event.stopPropagation()">
                   ${!STATE.flexibleMode ? `
