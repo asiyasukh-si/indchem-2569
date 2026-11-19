@@ -125,7 +125,7 @@ async function initApp() {
       ...c,
       credits: Number(c.credits) || 0
     }));
-    DB.courses.forEach(c => { DB.courseMap[c.course_id] = c; });
+    DB.courses.forEach(c => { if (c.course_id) DB.courseMap[c.course_id] = c; });
 
     // Process Conditions
     DB.conditions = conditions;
@@ -565,7 +565,9 @@ function renderRoadmap() {
               </div>
               ${(item.isPlaceholder || STATE.flexibleMode) ? `
                 <div class="card-actions" onclick="event.stopPropagation()">
-                  ${item.isPlaceholder ? `<button class="btn btn-sm" onclick="openPickerForSlot('${item.uid}')">เลือก/เปลี่ยนวิชา</button>` : ''}
+                  ${item.isPlaceholder ? (catGroup === 'Free'
+  ? `<button class="btn btn-sm" onclick="editFreeElective('${item.uid}')">ระบุชื่อวิชาเอง (ไม่บังคับ)</button>`
+  : `<button class="btn btn-sm" onclick="openPickerForSlot('${item.uid}')">เลือก/เปลี่ยนวิชา</button>`) : ''}
                   ${STATE.flexibleMode ? `<button class="btn btn-sm" onclick="openMoveModal('${item.uid}')">ย้ายเทอม</button>` : ''}
                   ${STATE.flexibleMode && item.status === 'failed' ? `<button class="btn btn-sm btn-accent" onclick="retakeCourse('${item.uid}')">+ ลงเรียนซ้ำ</button>` : ''}
                   ${STATE.flexibleMode ? `<button class="btn btn-sm btn-danger-outline" onclick="removeItem('${item.uid}')">ลบ</button>` : ''}
@@ -977,6 +979,27 @@ function importPlanJSON(event) {
   };
   reader.readAsText(file);
   event.target.value = '';
+}
+
+function editFreeElective(uid) {
+  const slot = STATE.items.find(i => i.uid === uid);
+  if (!slot) return;
+  const currentCode = (!slot.courseId || slot.courseId.startsWith('FREE')) ? '' : slot.courseId;
+  const newCode = prompt('ระบุรหัสวิชาเลือกเสรี (เช่น 004101) หรือเว้นว่างเพื่อใช้ค่าเริ่มต้น:', currentCode);
+  if (newCode === null) return;
+  const trimmedCode = newCode.trim();
+  if (!trimmedCode) {
+    slot.courseId = 'FREE_ELEC';
+    slot.title = 'วิชาเลือกเสรี (เลือกวิชาใดก็ได้ใน มช.)';
+  } else {
+    const currentTitle = slot.title.startsWith('วิชาเลือกเสรี') ? '' : slot.title;
+    const newTitle = prompt('ระบุชื่อวิชาเลือกเสรี (เช่น กีฬาเพื่อสุขภาพ):', currentTitle);
+    if (newTitle === null) return;
+    slot.courseId = trimmedCode;
+    slot.title = newTitle.trim() || 'วิชาเลือกเสรี';
+  }
+  saveState();
+  renderAll();
 }
 
 window.addEventListener('DOMContentLoaded', initApp);
