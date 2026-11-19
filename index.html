@@ -106,6 +106,22 @@
       <input type="text" id="pickerSearch" placeholder="ค้นหารหัสวิชา หรือ ชื่อวิชา..." oninput="renderPickerList()" />
       <select id="pickerTrackFilter" class="styled-select" onchange="renderPickerList()"></select>
     </div>
+    <div id="customAddBox" class="custom-add-box" style="display:none;">
+      <div style="font-size:0.85rem;font-weight:700;color:var(--primary);margin-bottom:8px;">
+        + กรอกรายวิชานอกฐานข้อมูลเอง (เช่น วิชาโทต่างคณะ / เลือกเสรีเพิ่มเติม)
+      </div>
+      <div class="custom-add-grid">
+        <input type="text" id="customCode" placeholder="รหัสวิชา" />
+        <input type="text" id="customTitle" placeholder="ชื่อวิชา" />
+        <input type="number" id="customCredits" placeholder="นก." value="3" min="1" max="12" />
+        <select id="customCategory">
+          <option value="Minor_Extra">วิชาโท / เรียนเพิ่ม</option>
+          <option value="Free_Elective">วิชาเลือกเสรี</option>
+          <option value="Major_Elective">วิชาเอกเลือก</option>
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="addCustomCourse()">เพิ่มวิชานี้</button>
+      </div>
+    </div>
     <div class="modal-body" id="pickerBody"></div>
   </div>
 </div>
