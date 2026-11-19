@@ -150,6 +150,17 @@ function injectEffectStyles() {
   document.head.appendChild(style);
 }
 
+function hideLegacyLegendBar() {
+  const selBar = document.getElementById('selectionStatus');
+  if (!selBar) return;
+  const parent = selBar.parentElement;
+  if (parent && parent.id !== 'appRoot' && parent.tagName !== 'MAIN' && parent.tagName !== 'BODY') {
+    parent.style.display = 'none';
+  } else {
+    selBar.style.display = 'none';
+  }
+}
+
 function showToast(title, description, duration = 4200) {
   let container = document.getElementById('toastContainer');
   if (!container) {
@@ -254,6 +265,7 @@ async function fetchSheet(sheetName) {
 
 async function initApp() {
   injectEffectStyles();
+  hideLegacyLegendBar();
   const loadingBox = document.getElementById('loadingBox');
   if (!SPREADSHEET_ID || SPREADSHEET_ID === 'PUT_YOUR_GOOGLE_SHEET_ID_HERE') {
     loadingBox.classList.add('error');
@@ -775,7 +787,10 @@ function renderRoadmap() {
     html += `<section class="year-section" id="year-section-${y}">`;
     html += `
       <div class="year-header">
-        <div class="year-title">ชั้นปีที่ ${y}</div>
+        <div class="year-title">
+          ชั้นปีที่ ${y}
+          ${y === 1 ? '<span style="font-size:0.82rem;font-weight:400;color:var(--muted);margin-left:8px;">(คลิกที่การ์ดรายวิชาเพื่อดูรายละเอียดและสายโซ่วิชา)</span>' : ''}
+        </div>
         ${STATE.flexibleMode && !hasSummer ? `<button class="btn btn-sm" onclick="addSummerTerm(${y})">+ เพิ่มภาคฤดูร้อน ปี ${y}</button>` : ''}
       </div>
     `;
@@ -880,17 +895,6 @@ function renderRoadmap() {
   }
 
   container.innerHTML = html;
-
-  const selBar = document.getElementById('selectionStatus');
-  if (SELECTED_COURSE_ID) {
-    const c = DB.courseMap[SELECTED_COURSE_ID];
-    selBar.innerHTML = `
-      <span>กำลังดูสายโซ่วิชา: <strong>${SELECTED_COURSE_ID} ${c ? c.title_th : ''}</strong></span>
-      <button class="btn btn-sm" style="margin-left:8px;" onclick="clearSelection()">ล้างการไฮไลต์</button>
-    `;
-  } else {
-    selBar.innerHTML = `<span style="color:var(--muted);">ยังไม่ได้เลือกรายวิชา</span>`;
-  }
 }
 
 function renderAll() {
