@@ -925,7 +925,8 @@ function selectCourse(courseId, uid) {
 
 function clearSelection() {
   SELECTED_COURSE_ID = null;
-  closeDrawer();
+  document.getElementById('detailDrawer').classList.remove('open');
+  document.getElementById('drawerBackdrop').classList.remove('open');
   renderRoadmap();
 }
 
@@ -1031,6 +1032,10 @@ function openDrawer(courseId, uid) {
 function closeDrawer() {
   document.getElementById('detailDrawer').classList.remove('open');
   document.getElementById('drawerBackdrop').classList.remove('open');
+  if (SELECTED_COURSE_ID) {
+    SELECTED_COURSE_ID = null;
+    renderRoadmap();
+  }
 }
 
 function jumpToCourse(courseId) {
@@ -1389,5 +1394,13 @@ function addCustomCourse() {
   saveState();
   renderAll();
 }
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeDrawer();
+    closePickerModal();
+    closeMoveModal();
+  }
+});
 
 window.addEventListener('DOMContentLoaded', initApp);
