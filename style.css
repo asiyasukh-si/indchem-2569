@@ -555,3 +555,10 @@ select.styled-select {
 .tag-elec-ge { background: #e0f2fe; color: #0369a1; }
 .tag-elec-major { background: #ccfbf1; color: #0f766e; }
 .tag-elec-free { background: #fef3c7; color: #b45309; }
+
+.card-title-en {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 1px;
+  line-height: 1.35;
+}
