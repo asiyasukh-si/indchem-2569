@@ -36,11 +36,11 @@ let STATE = {
   flexibleMode: false,
   maxYear: 4,
   extraSummers: [],          // e.g. [1, 2]
-  items: []                  // { uid, year, sem, courseId, title, credits, category, isPlaceholder, placeholderRule, status }
+  items: []                  // { uid, year, sem, courseId, title, credits, category, isPlaceholder, isExtra, placeholderRule, status }
 };
 
 let SELECTED_COURSE_ID = null;
-let PICKER_CTX = null;       // { mode: 'replace' | 'add', uid, year, sem, categoryFilter }
+let PICKER_CTX = null;       // { mode: 'replace' | 'add', uid, year, sem, category }
 let MOVE_UID = null;
 
 // =========================================================================
@@ -202,6 +202,7 @@ function buildDefaultItems(planType) {
         credits: cInfo ? cInfo.credits : (Number(p.credits) || 0),
         category: p.course_type || (cInfo ? cInfo.course_category : 'Major_Required'),
         isPlaceholder: isPh,
+        isExtra: false,
         placeholderRule: p.placeholder_rule || '',
         status: 'planned'
       };
@@ -284,7 +285,6 @@ function applySelectedTrack() {
   }
   STATE.selectedTrack = trackId;
 
-  // ดึงรายวิชาแนะนำของสายนั้น โดยไม่เอาวิชาที่เป็นเอกบังคับอยู่แล้วในแผน
   const requiredIds = new Set(STATE.items.filter(i => !i.isPlaceholder).map(i => i.courseId));
   const trackCourses = DB.tracks
     .filter(t => t.track_id === trackId && !requiredIds.has(t.course_id))
@@ -295,7 +295,6 @@ function applySelectedTrack() {
 
   majorElecSlots.forEach(slot => {
     const isLabSlot = slot.credits === 1 || slot.originalCourseId.includes('LAB');
-    // พยายามจับคู่วิชาที่หน่วยกิตตรงกันและเทอมแนะนำตรงกันก่อน
     let candidate = trackCourses.find(tc => {
       if (usedIds.has(tc.course_id)) return false;
       const cInfo = DB.courseMap[tc.course_id];
@@ -402,6 +401,7 @@ function validateItem(item) {
 // =========================================================================
 function getCategoryGroup(cat) {
   if (!cat) return 'MajorReq';
+  if (cat === 'Minor_Extra') return 'Minor';
   if (cat.startsWith('GE')) return 'GE';
   if (cat.startsWith('Core')) return 'Core';
   if (cat === 'Major_Elective') return 'MajorElec';
@@ -431,6 +431,7 @@ function renderSummary() {
     return m && Number(m[1]) >= 3;
   });
   const free = calc(i => getCategoryGroup(i.category) === 'Free');
+  const minor = calc(i => getCategoryGroup(i.category) === 'Minor');
 
   const cards = [
     { title: 'หน่วยกิตรวมตลอดหลักสูตร', data: total, target: getRuleMin('TOTAL_CREDITS', 135) },
@@ -442,15 +443,20 @@ function renderSummary() {
   ];
 
   const grid = document.getElementById('summaryGrid');
-  grid.innerHTML = cards.map(c => {
+  let html = cards.map(c => {
     const pct = Math.min(100, Math.round((c.data.passed / c.target) * 100));
     const isDone = c.data.passed >= c.target;
+    const extra = c.data.passed - c.target;
+    const statusText = isDone
+      ? (extra > 0 ? `<span style="color:var(--success);font-weight:600;">เกิน +${extra} นก.</span>` : `<span style="color:var(--success);font-weight:600;">ครบเกณฑ์</span>`)
+      : `ในแผน ${c.data.planned}`;
+
     return `
       <div class="stat-card">
         <div class="stat-title">${c.title}</div>
         <div class="stat-value">
           <span>${c.data.passed} / ${c.target} <span style="font-size:0.78rem;font-weight:500;">นก.</span></span>
-          <span class="stat-sub">ในแผน ${c.data.planned}</span>
+          <span class="stat-sub">${statusText}</span>
         </div>
         <div class="progress-track">
           <div class="progress-fill ${isDone ? 'done' : ''}" style="width:${pct}%"></div>
@@ -458,6 +464,23 @@ function renderSummary() {
       </div>
     `;
   }).join('');
+
+  if (minor.planned > 0) {
+    html += `
+      <div class="stat-card" style="border-color:#d8b4fe;background:#faf5ff;">
+        <div class="stat-title" style="color:#7e22ce;">วิชาโท / เรียนเพิ่มนอกแผน</div>
+        <div class="stat-value" style="color:#7e22ce;">
+          <span>${minor.passed} <span style="font-size:0.78rem;font-weight:500;">นก.</span></span>
+          <span class="stat-sub">ลงไว้ ${minor.planned} นก.</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" style="width:${minor.planned ? Math.round((minor.passed / minor.planned) * 100) : 0}%;background:#9333ea;"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  grid.innerHTML = html;
 }
 
 // =========================================================================
@@ -524,14 +547,19 @@ function renderRoadmap() {
           if (hlRole === 'coreq') hlBadge = '<span class="tag tag-hl-coreq">วิชาควบ</span>';
           if (hlRole === 'unlock') hlBadge = '<span class="tag tag-hl-unlock">ตัวต่อ</span>';
 
-            const phClass = item.isPlaceholder ? 'is-placeholder' : '';
+          const phClass = item.isPlaceholder ? 'is-placeholder' : '';
           let elecBadge = '';
           if (item.isPlaceholder) {
             if (catGroup === 'GE') elecBadge = '<span class="tag tag-elec-ge">เลือกศึกษาทั่วไป (GE)</span>';
             else if (catGroup === 'MajorElec') elecBadge = '<span class="tag tag-elec-major">วิชาเอกเลือก</span>';
             else if (catGroup === 'Free') elecBadge = '<span class="tag tag-elec-free">วิชาเลือกเสรี</span>';
             else elecBadge = '<span class="tag tag-elec">ช่องวิชาเลือก</span>';
+          } else if (catGroup === 'Minor') {
+            elecBadge = '<span class="tag tag-minor">วิชาโท / เรียนเพิ่ม</span>';
+          } else if (item.isExtra) {
+            elecBadge = '<span class="tag tag-elec-free">ลงเพิ่มเติม</span>';
           }
+
           html += `
             <div class="course-card cat-${catGroup} status-${item.status} ${phClass} ${hlClass}" onclick="selectCourse('${item.courseId}', '${item.uid}')">
               <div class="card-top">
@@ -564,14 +592,14 @@ function renderRoadmap() {
                 <span>${item.credits} หน่วยกิต</span>
                 ${warnings.length > 0 ? `<span class="tag tag-warn" title="${warnings.join(' | ')}">แจ้งเตือนเงื่อนไข (${warnings.length})</span>` : ''}
               </div>
-              ${(item.isPlaceholder || STATE.flexibleMode) ? `
+              ${(item.isPlaceholder || item.isExtra || STATE.flexibleMode) ? `
                 <div class="card-actions" onclick="event.stopPropagation()">
                   ${item.isPlaceholder ? (catGroup === 'Free'
-  ? `<button class="btn btn-sm" onclick="editFreeElective('${item.uid}')">ระบุชื่อวิชาเอง (ไม่บังคับ)</button>`
-  : `<button class="btn btn-sm" onclick="openPickerForSlot('${item.uid}')">เลือก/เปลี่ยนวิชา</button>`) : ''}
+                    ? `<button class="btn btn-sm" onclick="editFreeElective('${item.uid}')">ระบุชื่อวิชาเอง (ไม่บังคับ)</button>`
+                    : `<button class="btn btn-sm" onclick="openPickerForSlot('${item.uid}')">เลือก/เปลี่ยนวิชา</button>`) : ''}
                   ${STATE.flexibleMode ? `<button class="btn btn-sm" onclick="openMoveModal('${item.uid}')">ย้ายเทอม</button>` : ''}
                   ${STATE.flexibleMode && item.status === 'failed' ? `<button class="btn btn-sm btn-accent" onclick="retakeCourse('${item.uid}')">+ ลงเรียนซ้ำ</button>` : ''}
-                  ${STATE.flexibleMode ? `<button class="btn btn-sm btn-danger-outline" onclick="removeItem('${item.uid}')">ลบ</button>` : ''}
+                  ${(STATE.flexibleMode || item.isExtra) ? `<button class="btn btn-sm btn-danger-outline" onclick="removeItem('${item.uid}')">ลบ</button>` : ''}
                 </div>
               ` : ''}
             </div>
@@ -579,10 +607,7 @@ function renderRoadmap() {
         });
       }
 
-      if (STATE.flexibleMode) {
-        html += `<button class="btn btn-sm" style="margin-top:4px;justify-content:center;" onclick="openPickerToAdd(${y}, ${s})">+ เพิ่มรายวิชาในเทอมนี้</button>`;
-      }
-
+      html += `<button class="btn btn-sm" style="margin-top:4px;justify-content:center;" onclick="openPickerToAdd(${y}, ${s})">+ เพิ่มวิชาเพิ่มเติม / วิชาโท</button>`;
       html += `</div>`;
     });
 
@@ -750,6 +775,7 @@ function openPickerForSlot(uid) {
   PICKER_CTX = { mode: 'replace', uid, year: slot.year, sem: slot.sem, category: slot.category };
   document.getElementById('pickerTitle').textContent = `เลือกวิชาสำหรับช่อง: ${slot.originalTitle}`;
   setupPickerFilters(slot.category === 'Major_Elective');
+  document.getElementById('customAddBox').style.display = 'none';
   document.getElementById('pickerModal').classList.add('open');
   renderPickerList();
 }
@@ -758,6 +784,7 @@ function openPickerToAdd(year, sem) {
   PICKER_CTX = { mode: 'add', uid: null, year, sem, category: 'ALL' };
   document.getElementById('pickerTitle').textContent = `เพิ่มรายวิชาใน ปี ${year} ${sem === 3 ? 'ภาคฤดูร้อน' : 'เทอม ' + sem}`;
   setupPickerFilters(true);
+  document.getElementById('customAddBox').style.display = 'block';
   document.getElementById('pickerModal').classList.add('open');
   renderPickerList();
 }
@@ -781,14 +808,13 @@ function renderPickerList() {
 
   let list = [...DB.courses];
 
-if (PICKER_CTX.mode === 'replace') {
+  if (PICKER_CTX.mode === 'replace') {
     const slotGroup = getCategoryGroup(PICKER_CTX.category);
     if (slotGroup === 'GE') {
       list = list.filter(c => getCategoryGroup(c.course_category) === 'GE');
     } else if (slotGroup === 'MajorElec') {
       list = list.filter(c => c.course_category === 'Major_Elective');
     }
-    // กรณี Free_Elective จะไม่กรองหมวด เพื่อให้เลือกได้ทุกวิชาที่ยังไม่ได้เรียน
   }
 
   if (trackFilter && trackFilter !== 'ALL') {
@@ -861,6 +887,7 @@ function pickCourse(courseId) {
       credits: c.credits,
       category: c.course_category || 'Major_Elective',
       isPlaceholder: false,
+      isExtra: true,
       placeholderRule: '',
       status: 'planned'
     });
@@ -950,7 +977,7 @@ function addExtraYear() {
 }
 
 // =========================================================================
-// 9. Export / Import Plan JSON
+// 9. Export / Import Plan JSON & Custom / Free Elective Handlers
 // =========================================================================
 function exportPlanJSON() {
   const blob = new Blob([JSON.stringify(STATE, null, 2)], { type: 'application/json' });
@@ -999,6 +1026,41 @@ function editFreeElective(uid) {
     slot.courseId = trimmedCode;
     slot.title = newTitle.trim() || 'วิชาเลือกเสรี';
   }
+  saveState();
+  renderAll();
+}
+
+function addCustomCourse() {
+  const code = document.getElementById('customCode').value.trim();
+  const title = document.getElementById('customTitle').value.trim();
+  const credits = Number(document.getElementById('customCredits').value) || 3;
+  const category = document.getElementById('customCategory').value;
+
+  if (!code || !title) {
+    alert('กรุณากรอกทั้งรหัสวิชาและชื่อวิชาครับ');
+    return;
+  }
+
+  STATE.items.push({
+    uid: `extra_${Date.now()}_${code}`,
+    year: PICKER_CTX.year,
+    sem: PICKER_CTX.sem,
+    courseId: code,
+    originalCourseId: code,
+    title: title,
+    originalTitle: title,
+    credits: credits,
+    category: category,
+    isPlaceholder: false,
+    isExtra: true,
+    placeholderRule: '',
+    status: 'planned'
+  });
+
+  document.getElementById('customCode').value = '';
+  document.getElementById('customTitle').value = '';
+  document.getElementById('customCredits').value = '3';
+  closePickerModal();
   saveState();
   renderAll();
 }
