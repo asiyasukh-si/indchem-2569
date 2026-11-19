@@ -23,7 +23,7 @@ const DB = {
   unlocksByCourse: {},
   tracks: [],
   trackNames: {},
-  tracksByCourse: {},
+  tracksByCourse: {}, // course_id -> [{ trackId, trackName, isCommon }]
   studyPlans: [],
   rules: [],
   plos: {},
@@ -43,6 +43,10 @@ let STATE = {
 let SELECTED_COURSE_ID = null;
 let PICKER_CTX = null;       // { mode: 'replace' | 'add', uid, year, sem, category }
 let MOVE_UID = null;
+
+function isCommonOptionRow(trackRow) {
+  return String(trackRow && trackRow.is_common_option).trim().toUpperCase() === 'TRUE';
+}
 
 // =========================================================================
 // 1. Data Loading & RFC 4180 CSV Parser
@@ -146,13 +150,22 @@ async function initApp() {
     DB.tracks = tracks;
     tracks.forEach(t => {
       const tName = t.track_name_th || t.track_id;
+      const isCommon = isCommonOptionRow(t);
       if (t.track_id && !DB.trackNames[t.track_id]) {
         DB.trackNames[t.track_id] = tName;
       }
-      if (t.course_id) {
+      if (t.course_id && t.track_id) {
         if (!DB.tracksByCourse[t.course_id]) DB.tracksByCourse[t.course_id] = [];
-        if (tName && !DB.tracksByCourse[t.course_id].includes(tName)) {
-          DB.tracksByCourse[t.course_id].push(tName);
+        const existing = DB.tracksByCourse[t.course_id].find(x => x.trackId === t.track_id);
+        if (!existing) {
+          DB.tracksByCourse[t.course_id].push({
+            trackId: t.track_id,
+            trackName: tName,
+            isCommon
+          });
+        } else if (!isCommon) {
+          // หากมีซ้ำในกลุ่มเดียวกัน ให้ถือว่าวิชาเฉพาะกลุ่ม (FALSE) มีน้ำหนักมากกว่า
+          existing.isCommon = false;
         }
       }
     });
@@ -302,6 +315,9 @@ function applySelectedTrack() {
     .filter(t => t.course_id && !requiredIds.has(t.course_id))
     .sort((a, b) => (a.priority_level || '').localeCompare(b.priority_level || ''));
 
+  const coreTrackCourses = trackCourses.filter(t => !isCommonOptionRow(t));
+  const commonTrackCourses = trackCourses.filter(t => isCommonOptionRow(t));
+
   const fallbackNoteObj = allTrackRows.find(t => t.fallback_note_th && t.fallback_note_th.trim());
   const fallbackNote = fallbackNoteObj ? fallbackNoteObj.fallback_note_th.trim() : '';
 
@@ -336,44 +352,52 @@ function applySelectedTrack() {
     return isLabSlot ? cr === 1 : cr !== 1;
   };
 
-  // รอบที่ 1: จับคู่ตรงทั้งชั้นปี (recommended_year) และภาคเรียน (recommended_sem) ที่อาจารย์แนะนำ
-  majorElecSlots.forEach(slot => {
-    if (filledSlotUids.has(slot.uid)) return;
-    const candidate = trackCourses.find(tc => {
-      if (usedIds.has(tc.course_id)) return false;
-      if (!isCreditTypeMatch(slot, tc)) return false;
-      const recY = Number(tc.recommended_year);
-      const recS = Number(tc.recommended_sem);
-      return recY === slot.year && recS === slot.sem;
+  const fillSlotsWithPool = (pool) => {
+    // รอบที่ 1: จับคู่ตรงทั้งชั้นปี (recommended_year) และภาคเรียน (recommended_sem) ที่อาจารย์แนะนำ
+    majorElecSlots.forEach(slot => {
+      if (filledSlotUids.has(slot.uid)) return;
+      const candidate = pool.find(tc => {
+        if (usedIds.has(tc.course_id)) return false;
+        if (!isCreditTypeMatch(slot, tc)) return false;
+        const recY = Number(tc.recommended_year);
+        const recS = Number(tc.recommended_sem);
+        return recY === slot.year && recS === slot.sem;
+      });
+      if (candidate) assignToSlot(slot, candidate);
     });
-    if (candidate) assignToSlot(slot, candidate);
-  });
 
-  // รอบที่ 2: จับคู่ตรงภาคเรียนที่แนะนำ (recommended_sem) หรือเทอมที่เปิดสอน (open_term_suggested)
-  majorElecSlots.forEach(slot => {
-    if (filledSlotUids.has(slot.uid)) return;
-    const candidate = trackCourses.find(tc => {
-      if (usedIds.has(tc.course_id)) return false;
-      if (!isCreditTypeMatch(slot, tc)) return false;
-      const recS = Number(tc.recommended_sem);
-      const cInfo = DB.courseMap[tc.course_id];
-      const termMatch = recS === slot.sem || (cInfo && cInfo.open_term_suggested && cInfo.open_term_suggested.includes(`T${slot.sem}`));
-      return termMatch;
+    // รอบที่ 2: จับคู่ตรงภาคเรียนที่แนะนำ (recommended_sem) หรือเทอมที่เปิดสอน (open_term_suggested)
+    majorElecSlots.forEach(slot => {
+      if (filledSlotUids.has(slot.uid)) return;
+      const candidate = pool.find(tc => {
+        if (usedIds.has(tc.course_id)) return false;
+        if (!isCreditTypeMatch(slot, tc)) return false;
+        const recS = Number(tc.recommended_sem);
+        const cInfo = DB.courseMap[tc.course_id];
+        const termMatch = recS === slot.sem || (cInfo && cInfo.open_term_suggested && cInfo.open_term_suggested.includes(`T${slot.sem}`));
+        return termMatch;
+      });
+      if (candidate) assignToSlot(slot, candidate);
     });
-    if (candidate) assignToSlot(slot, candidate);
-  });
 
-  // รอบที่ 3: เติมรายวิชาที่เหลือในกลุ่มลงในช่องว่างที่ยังเหลือ
-  majorElecSlots.forEach(slot => {
-    if (filledSlotUids.has(slot.uid)) return;
-    const candidate = trackCourses.find(tc => {
-      if (usedIds.has(tc.course_id)) return false;
-      return isCreditTypeMatch(slot, tc);
+    // รอบที่ 3: เติมรายวิชาที่เหลือในชุดลงในช่องว่างที่ยังเหลือ
+    majorElecSlots.forEach(slot => {
+      if (filledSlotUids.has(slot.uid)) return;
+      const candidate = pool.find(tc => {
+        if (usedIds.has(tc.course_id)) return false;
+        return isCreditTypeMatch(slot, tc);
+      });
+      if (candidate) assignToSlot(slot, candidate);
     });
-    if (candidate) assignToSlot(slot, candidate);
-  });
+  };
 
-  // รอบที่ 4: ช่องที่ยังว่างอยู่ (กรณีกลุ่มมีวิชาไม่ครบจำนวนช่อง) ให้แสดงคำแนะนำ fallback_note_th
+  // ขั้นที่ 1: ลงวิชาเฉพาะกลุ่มหลัก (is_common_option = FALSE)
+  fillSlotsWithPool(coreTrackCourses);
+
+  // ขั้นที่ 2: เติมวิชาตัวเลือกร่วมของกลุ่มนั้น (is_common_option = TRUE) ลงช่องที่ยังว่าง
+  fillSlotsWithPool(commonTrackCourses);
+
+  // ขั้นที่ 3: ช่องที่ยังว่างอยู่หลังเติมครบทั้ง 2 ขั้น ให้แสดงคำแนะนำ fallback_note_th
   majorElecSlots.forEach(slot => {
     if (!filledSlotUids.has(slot.uid) && fallbackNote) {
       slot.trackNote = fallbackNote;
@@ -898,13 +922,21 @@ function renderPickerList() {
     }
   }
 
+  let selectedTrackCommonMap = null;
   if (trackFilter === '209_GENERAL') {
     list = list.filter(c => c.course_id.startsWith('209') && !allTrackCourseIds.has(c.course_id));
   } else if (trackFilter === 'NON_209') {
     list = list.filter(c => !c.course_id.startsWith('209'));
   } else if (trackFilter && trackFilter !== 'ALL') {
-    const inTrack = new Set(DB.tracks.filter(t => t.track_id === trackFilter).map(t => t.course_id));
-    list = list.filter(c => inTrack.has(c.course_id));
+    const trackRows = DB.tracks.filter(t => t.track_id === trackFilter && t.course_id);
+    selectedTrackCommonMap = {};
+    trackRows.forEach(t => {
+      const isCommon = isCommonOptionRow(t);
+      if (selectedTrackCommonMap[t.course_id] === undefined || !isCommon) {
+        selectedTrackCommonMap[t.course_id] = isCommon;
+      }
+    });
+    list = list.filter(c => selectedTrackCommonMap[c.course_id] !== undefined);
   }
 
   if (q) {
@@ -915,8 +947,13 @@ function renderPickerList() {
     );
   }
 
-  // เรียงรหัส 209xxx ขึ้นก่อนเสมอ
+  // เรียงลำดับ: หากกรองตามกลุ่ม ให้วิชาเฉพาะกลุ่ม (FALSE) ขึ้นก่อนตัวเลือกร่วม (TRUE) แล้วจึงเรียงรหัส 209xxx ขึ้นก่อน
   list.sort((a, b) => {
+    if (selectedTrackCommonMap) {
+      const aCommon = selectedTrackCommonMap[a.course_id] ? 1 : 0;
+      const bCommon = selectedTrackCommonMap[b.course_id] ? 1 : 0;
+      if (aCommon !== bCommon) return aCommon - bCommon;
+    }
     const a209 = a.course_id.startsWith('209') ? 0 : 1;
     const b209 = b.course_id.startsWith('209') ? 0 : 1;
     if (a209 !== b209) return a209 - b209;
@@ -939,7 +976,11 @@ function renderPickerList() {
     const courseTracks = DB.tracksByCourse[c.course_id] || [];
     let groupBadge = '';
     if (courseTracks.length > 0) {
-      groupBadge = courseTracks.map(tn => `<span class="tag tag-elec-major">${tn}</span>`).join(' ');
+      groupBadge = courseTracks.map(t =>
+        t.isCommon
+          ? `<span class="tag tag-elec-free">${t.trackName} (ตัวเลือกร่วม)</span>`
+          : `<span class="tag tag-elec-major">${t.trackName}</span>`
+      ).join(' ');
     } else if (c.course_id.startsWith('209')) {
       groupBadge = '<span class="tag tag-elec-ge">209 ทั่วไป</span>';
     } else {
