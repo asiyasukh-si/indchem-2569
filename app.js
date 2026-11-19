@@ -23,6 +23,7 @@ const DB = {
   unlocksByCourse: {},
   tracks: [],
   trackNames: {},
+  tracksByCourse: {},
   studyPlans: [],
   rules: [],
   plos: {},
@@ -144,8 +145,15 @@ async function initApp() {
     // Process Tracks
     DB.tracks = tracks;
     tracks.forEach(t => {
+      const tName = t.track_name_th || t.track_id;
       if (t.track_id && !DB.trackNames[t.track_id]) {
-        DB.trackNames[t.track_id] = t.track_name_th || t.track_id;
+        DB.trackNames[t.track_id] = tName;
+      }
+      if (t.course_id) {
+        if (!DB.tracksByCourse[t.course_id]) DB.tracksByCourse[t.course_id] = [];
+        if (tName && !DB.tracksByCourse[t.course_id].includes(tName)) {
+          DB.tracksByCourse[t.course_id].push(tName);
+        }
       }
     });
 
@@ -854,12 +862,22 @@ function openPickerToAdd(year, sem) {
 function setupPickerFilters(showTracks) {
   document.getElementById('pickerSearch').value = '';
   const sel = document.getElementById('pickerTrackFilter');
-  sel.innerHTML = '<option value="ALL">แสดงทุกวิชาที่เกี่ยวข้อง</option>';
+  let opts = '<option value="ALL">แสดงทุกวิชาที่เกี่ยวข้อง</option>';
   if (showTracks) {
-    Object.entries(DB.trackNames).forEach(([id, name]) => {
-      sel.innerHTML += `<option value="${id}">สาย: ${name}</option>`;
-    });
+    const trackEntries = Object.entries(DB.trackNames);
+    if (trackEntries.length > 0) {
+      opts += '<optgroup label="กลุ่มความเชี่ยวชาญเฉพาะทาง">';
+      trackEntries.forEach(([id, name]) => {
+        opts += `<option value="${id}">${name}</option>`;
+      });
+      opts += '</optgroup>';
+    }
+    opts += '<optgroup label="กลุ่มวิชาเลือกอื่นๆ">';
+    opts += '<option value="209_GENERAL">กลุ่ม 209 ทั่วไป (ไม่กำหนดกลุ่ม / ลงได้ทุกสาย)</option>';
+    opts += '<option value="NON_209">กลุ่มวิชานอกภาควิชา (ไม่ใช่รหัส 209)</option>';
+    opts += '</optgroup>';
   }
+  sel.innerHTML = opts;
   sel.style.display = showTracks ? 'inline-block' : 'none';
 }
 
@@ -867,6 +885,7 @@ function renderPickerList() {
   const q = document.getElementById('pickerSearch').value.toLowerCase();
   const trackFilter = document.getElementById('pickerTrackFilter').value;
   const activeIds = new Set(STATE.items.filter(i => i.status !== 'failed').map(i => i.courseId));
+  const allTrackCourseIds = new Set(DB.tracks.map(t => t.course_id).filter(Boolean));
 
   let list = [...DB.courses];
 
@@ -879,7 +898,11 @@ function renderPickerList() {
     }
   }
 
-  if (trackFilter && trackFilter !== 'ALL') {
+  if (trackFilter === '209_GENERAL') {
+    list = list.filter(c => c.course_id.startsWith('209') && !allTrackCourseIds.has(c.course_id));
+  } else if (trackFilter === 'NON_209') {
+    list = list.filter(c => !c.course_id.startsWith('209'));
+  } else if (trackFilter && trackFilter !== 'ALL') {
     const inTrack = new Set(DB.tracks.filter(t => t.track_id === trackFilter).map(t => t.course_id));
     list = list.filter(c => inTrack.has(c.course_id));
   }
@@ -913,10 +936,24 @@ function renderPickerList() {
     const termWarn = c.offered_terms && c.offered_terms !== 'VERIFY' && !offered.includes(curTermTag)
       ? `<span class="tag tag-warn">เปิดสอน ${c.offered_terms}</span>` : '';
 
+    const courseTracks = DB.tracksByCourse[c.course_id] || [];
+    let groupBadge = '';
+    if (courseTracks.length > 0) {
+      groupBadge = courseTracks.map(tn => `<span class="tag tag-elec-major">${tn}</span>`).join(' ');
+    } else if (c.course_id.startsWith('209')) {
+      groupBadge = '<span class="tag tag-elec-ge">209 ทั่วไป</span>';
+    } else {
+      groupBadge = '<span class="tag tag-minor">นอกภาควิชา</span>';
+    }
+
     return `
       <div class="picker-item">
         <div>
-          <div style="font-weight:700;font-size:0.9rem;">${c.course_id} — ${c.title_th} ${termWarn}</div>
+          <div style="font-weight:700;font-size:0.9rem;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+            <span>${c.course_id} — ${c.title_th}</span>
+            ${groupBadge}
+            ${termWarn}
+          </div>
           <div style="font-size:0.8rem;color:var(--muted);">${c.credits} หน่วยกิต | หมวด: ${c.course_category}</div>
         </div>
         <button class="btn btn-sm ${alreadyIn ? '' : 'btn-primary'}" ${alreadyIn ? 'disabled' : ''} onclick="pickCourse('${c.course_id}')">
