@@ -562,3 +562,38 @@ select.styled-select {
   margin-top: 1px;
   line-height: 1.35;
 }
+
+/* === รองรับวิชาโทและวิชาเรียนเพิ่มนอกแผน === */
+.course-card.cat-Minor {
+  border-left-color: #9333ea;
+}
+.course-card.cat-Minor:not(.status-passed):not(.status-failed) {
+  background: #faf5ff;
+  border-color: #d8b4fe;
+  border-style: dashed;
+}
+.tag-minor { background: #f3e8ff; color: #7e22ce; }
+
+.custom-add-box {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 18px 0;
+}
+.custom-add-grid {
+  display: grid;
+  grid-template-columns: 110px 1fr 70px 140px auto;
+  gap: 8px;
+  align-items: center;
+}
+@media (max-width: 640px) {
+  .custom-add-grid { grid-template-columns: 1fr 1fr; }
+}
+.custom-add-grid input, .custom-add-grid select {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: 100%;
+  background: #fff;
+}
