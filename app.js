@@ -1,7 +1,7 @@
 // =========================================================================
 // ตั้งค่ารหัสไฟล์ Google Sheets (นำรหัสระหว่าง /d/ กับ /edit มาวางแทนที่ด้านล่าง)
 // =========================================================================
-const SPREADSHEET_ID = 'PUT_YOUR_GOOGLE_SHEET_ID_HERE';
+const SPREADSHEET_ID = '1_IeTWmD1E6URJpAJo_xUE41ohTWBEucqk-oKRmbUs8s';
 
 const STORAGE_KEY = 'indchem2569_planner_v1';
 const SHEETS = [
@@ -110,7 +110,7 @@ async function fetchSheet(sheetName) {
 
 async function initApp() {
   const loadingBox = document.getElementById('loadingBox');
-  if (!SPREADSHEET_ID || SPREADSHEET_ID === '1_IeTWmD1E6URJpAJo_xUE41ohTWBEucqk-oKRmbUs8s') {
+  if (!SPREADSHEET_ID || SPREADSHEET_ID === 'PUT_YOUR_GOOGLE_SHEET_ID_HERE') {
     loadingBox.classList.add('error');
     loadingBox.innerHTML = '<strong>ยังไม่ได้ใส่รหัส Google Sheets</strong><br>กรุณาแก้ไขบรรทัด SPREADSHEET_ID ในไฟล์ app.js แล้วบันทึกลง GitHub อีกครั้งครับ';
     return;
