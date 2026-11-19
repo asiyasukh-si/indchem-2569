@@ -37,7 +37,7 @@ let STATE = {
   flexibleMode: false,
   maxYear: 4,
   extraSummers: [],          // e.g. [1, 2]
-  items: []                  // { uid, year, sem, courseId, originalCourseId, title, originalTitle, credits, originalCredits, category, isPlaceholder, isExtra, placeholderRule, trackNote, status }
+  items: []                  // { uid, slotGroupId, isSplitChild, year, sem, courseId, originalCourseId, title, originalTitle, credits, originalCredits, category, isPlaceholder, isExtra, placeholderRule, trackNote, status }
 };
 
 let SELECTED_COURSE_ID = null;
@@ -151,14 +151,30 @@ function injectEffectStyles() {
 }
 
 function hideLegacyLegendBar() {
+  const stopTags = new Set(['BODY', 'HTML', 'MAIN', 'HEADER', 'FOOTER']);
+  const stopIds = new Set(['appRoot', 'roadmapContainer', 'summaryGrid']);
+
   const selBar = document.getElementById('selectionStatus');
-  if (!selBar) return;
-  const parent = selBar.parentElement;
-  if (parent && parent.id !== 'appRoot' && parent.tagName !== 'MAIN' && parent.tagName !== 'BODY') {
-    parent.style.display = 'none';
-  } else {
-    selBar.style.display = 'none';
+  if (selBar) {
+    let target = selBar;
+    let cur = selBar.parentElement;
+    while (cur && !stopTags.has(cur.tagName) && !stopIds.has(cur.id)) {
+      if (cur.querySelector('#roadmapContainer') || cur.querySelector('#summaryGrid')) break;
+      target = cur;
+      if (cur.textContent && cur.textContent.includes('สัญลักษณ์สายโซ่วิชา')) break;
+      cur = cur.parentElement;
+    }
+    target.style.display = 'none';
   }
+
+  const root = document.getElementById('appRoot') || document.body;
+  root.querySelectorAll('div, section').forEach(el => {
+    if (stopIds.has(el.id)) return;
+    if (el.querySelector('#roadmapContainer') || el.querySelector('#summaryGrid')) return;
+    if (el.textContent && el.textContent.includes('สัญลักษณ์สายโซ่วิชา')) {
+      el.style.display = 'none';
+    }
+  });
 }
 
 function showToast(title, description, duration = 4200) {
@@ -335,6 +351,7 @@ async function initApp() {
 
     loadingBox.style.display = 'none';
     document.getElementById('appRoot').style.display = 'block';
+    hideLegacyLegendBar();
     renderAll();
   } catch (err) {
     loadingBox.classList.add('error');
@@ -351,7 +368,7 @@ function populateTrackDropdown() {
 }
 
 // =========================================================================
-// 2. State Management
+// 2. State Management & Credit-Aware Slot Splitting
 // =========================================================================
 function buildDefaultItems(planType) {
   const allowedTypes = planType === 'Coop'
@@ -364,8 +381,11 @@ function buildDefaultItems(planType) {
       const isPh = String(p.is_placeholder).toUpperCase() === 'TRUE';
       const cInfo = DB.courseMap[p.course_id];
       const baseCredits = cInfo ? cInfo.credits : (Number(p.credits) || 0);
+      const uid = `slot_${idx}_${p.course_id}`;
       return {
-        uid: `slot_${idx}_${p.course_id}`,
+        uid,
+        slotGroupId: uid,
+        isSplitChild: false,
         year: Number(p.year_level) || 1,
         sem: Number(p.semester) || 1,
         courseId: p.course_id,
@@ -384,6 +404,39 @@ function buildDefaultItems(planType) {
     });
 }
 
+function createRemainderSlot(parentSlot, remCredits) {
+  if (remCredits <= 0) return null;
+  const groupId = parentSlot.slotGroupId || parentSlot.uid;
+  parentSlot.slotGroupId = groupId;
+  const childUid = `${groupId}_sub_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const childSlot = {
+    uid: childUid,
+    slotGroupId: groupId,
+    isSplitChild: true,
+    year: parentSlot.year,
+    sem: parentSlot.sem,
+    courseId: parentSlot.originalCourseId,
+    originalCourseId: parentSlot.originalCourseId,
+    title: `${parentSlot.originalTitle} (คงเหลือ ${remCredits} หน่วยกิต)`,
+    originalTitle: parentSlot.originalTitle,
+    credits: remCredits,
+    originalCredits: remCredits,
+    category: parentSlot.category,
+    isPlaceholder: true,
+    isExtra: false,
+    placeholderRule: parentSlot.placeholderRule || '',
+    trackNote: '',
+    status: 'planned'
+  };
+  const idx = STATE.items.findIndex(i => i.uid === parentSlot.uid);
+  if (idx !== -1) {
+    STATE.items.splice(idx + 1, 0, childSlot);
+  } else {
+    STATE.items.push(childSlot);
+  }
+  return childSlot;
+}
+
 function loadOrBuildState() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -391,6 +444,11 @@ function loadOrBuildState() {
       const parsed = JSON.parse(saved);
       if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
         STATE = parsed;
+        // รองรับข้อมูลเก่าที่ยังไม่มี slotGroupId / isSplitChild
+        STATE.items.forEach(it => {
+          if (!it.slotGroupId) it.slotGroupId = it.uid;
+          if (it.isSplitChild === undefined) it.isSplitChild = false;
+        });
         syncControlsFromState();
         return;
       }
@@ -476,73 +534,91 @@ function applySelectedTrack() {
   const fallbackNoteObj = allTrackRows.find(t => t.fallback_note_th && t.fallback_note_th.trim());
   const fallbackNote = fallbackNoteObj ? fallbackNoteObj.fallback_note_th.trim() : '';
 
+  // ยุบช่องย่อยที่เคยแตกไว้ก่อนหน้า แล้วรีเซ็ตช่องวิชาเอกเลือกทั้งหมดกลับสู่ช่องมาตรฐานเดิม
+  STATE.items = STATE.items.filter(i => !(i.isSplitChild && i.category === 'Major_Elective'));
   const majorElecSlots = STATE.items.filter(i => i.isPlaceholder && i.category === 'Major_Elective');
 
-  // รีเซ็ตช่องวิชาเอกเลือกทั้งหมดกลับสู่ค่าตั้งต้นก่อนจัดวางใหม่
   majorElecSlots.forEach(slot => {
     const origInfo = DB.courseMap[slot.originalCourseId];
+    slot.slotGroupId = slot.slotGroupId || slot.uid;
     slot.courseId = slot.originalCourseId;
     slot.title = origInfo ? origInfo.title_th : slot.originalTitle;
-    slot.credits = slot.originalCredits || (origInfo ? origInfo.credits : slot.credits);
+    slot.credits = slot.originalCredits || (origInfo ? origInfo.credits : 3);
     slot.trackNote = '';
   });
 
   const usedIds = new Set();
   const filledSlotUids = new Set();
 
+  const getCourseCredits = (tc) => {
+    const cInfo = DB.courseMap[tc.course_id];
+    const cr = cInfo ? cInfo.credits : Number(tc.credits);
+    return cr > 0 ? cr : 3;
+  };
+
+  const findBestSlot = (filterFn, cr) => {
+    const eligible = majorElecSlots.filter(slot =>
+      !filledSlotUids.has(slot.uid) &&
+      cr <= slot.credits &&
+      filterFn(slot)
+    );
+    if (eligible.length === 0) return null;
+    // เลือกช่องที่หน่วยกิตพอดีหรือใกล้เคียงที่สุดก่อน (เช่น ลงแลป 1 นก. ในช่องคงเหลือ 1 นก. ก่อนแตกช่อง 3 นก. ใหม่)
+    eligible.sort((a, b) => a.credits - b.credits);
+    return eligible[0];
+  };
+
   const assignToSlot = (slot, candidate) => {
     usedIds.add(candidate.course_id);
     filledSlotUids.add(slot.uid);
     const cInfo = DB.courseMap[candidate.course_id];
+    const cr = getCourseCredits(candidate);
+    const rem = slot.credits - cr;
+
     slot.courseId = candidate.course_id;
     slot.title = cInfo ? cInfo.title_th : candidate.course_title_th;
-    slot.credits = cInfo ? cInfo.credits : (Number(candidate.credits) || slot.credits);
+    slot.credits = cr;
     slot.trackNote = '';
-  };
 
-  const isCreditTypeMatch = (slot, tc) => {
-    const isLabSlot = (slot.originalCredits || slot.credits) === 1 || String(slot.originalCourseId).includes('LAB');
-    const cInfo = DB.courseMap[tc.course_id];
-    const cr = cInfo ? cInfo.credits : Number(tc.credits);
-    return isLabSlot ? cr === 1 : cr !== 1;
+    // หากหน่วยกิตน้อยกว่าช่องที่มีอยู่ ให้แตกช่องว่างส่วนที่เหลือออกมาต่อท้ายในเทอมเดียวกันทันที
+    if (rem > 0) {
+      const child = createRemainderSlot(slot, rem);
+      if (child) majorElecSlots.push(child);
+    }
   };
 
   const fillSlotsWithPool = (pool) => {
     // รอบที่ 1: จับคู่ตรงทั้งชั้นปี (recommended_year) และภาคเรียน (recommended_sem) ที่อาจารย์แนะนำ
-    majorElecSlots.forEach(slot => {
-      if (filledSlotUids.has(slot.uid)) return;
-      const candidate = pool.find(tc => {
-        if (usedIds.has(tc.course_id)) return false;
-        if (!isCreditTypeMatch(slot, tc)) return false;
-        const recY = Number(tc.recommended_year);
-        const recS = Number(tc.recommended_sem);
-        return recY === slot.year && recS === slot.sem;
-      });
-      if (candidate) assignToSlot(slot, candidate);
+    pool.forEach(tc => {
+      if (usedIds.has(tc.course_id)) return;
+      const recY = Number(tc.recommended_year);
+      const recS = Number(tc.recommended_sem);
+      if (!recY || !recS) return;
+      const cr = getCourseCredits(tc);
+      const slot = findBestSlot(s => s.year === recY && s.sem === recS, cr);
+      if (slot) assignToSlot(slot, tc);
     });
 
     // รอบที่ 2: จับคู่ตรงภาคเรียนที่แนะนำ (recommended_sem) หรือเทอมที่เปิดสอน (open_term_suggested)
-    majorElecSlots.forEach(slot => {
-      if (filledSlotUids.has(slot.uid)) return;
-      const candidate = pool.find(tc => {
-        if (usedIds.has(tc.course_id)) return false;
-        if (!isCreditTypeMatch(slot, tc)) return false;
-        const recS = Number(tc.recommended_sem);
-        const cInfo = DB.courseMap[tc.course_id];
-        const termMatch = recS === slot.sem || (cInfo && cInfo.open_term_suggested && cInfo.open_term_suggested.includes(`T${slot.sem}`));
-        return termMatch;
-      });
-      if (candidate) assignToSlot(slot, candidate);
+    pool.forEach(tc => {
+      if (usedIds.has(tc.course_id)) return;
+      const recS = Number(tc.recommended_sem);
+      const cInfo = DB.courseMap[tc.course_id];
+      const cr = getCourseCredits(tc);
+      const slot = findBestSlot(s =>
+        recS === s.sem ||
+        (cInfo && cInfo.open_term_suggested && cInfo.open_term_suggested.includes(`T${s.sem}`)),
+        cr
+      );
+      if (slot) assignToSlot(slot, tc);
     });
 
     // รอบที่ 3: เติมรายวิชาที่เหลือในชุดลงในช่องว่างที่ยังเหลือ
-    majorElecSlots.forEach(slot => {
-      if (filledSlotUids.has(slot.uid)) return;
-      const candidate = pool.find(tc => {
-        if (usedIds.has(tc.course_id)) return false;
-        return isCreditTypeMatch(slot, tc);
-      });
-      if (candidate) assignToSlot(slot, candidate);
+    pool.forEach(tc => {
+      if (usedIds.has(tc.course_id)) return;
+      const cr = getCourseCredits(tc);
+      const slot = findBestSlot(() => true, cr);
+      if (slot) assignToSlot(slot, tc);
     });
   };
 
@@ -574,13 +650,13 @@ function applySelectedTrack() {
 
   // แสดงป๊อปอัปแจ้งเตือนสรุปผล
   const filledCount = filledSlotUids.size;
-  const remainingCount = majorElecSlots.length - filledCount;
-  const desc = remainingCount > 0
-    ? `จัดวางวิชาสาย ${trackName} ลงในตารางปี 3–4 จำนวน ${filledCount} วิชาเรียบร้อยแล้ว (เหลือช่องว่าง ${remainingCount} ช่องสำหรับเลือกเพิ่ม)`
+  const remainingSlots = majorElecSlots.filter(s => !filledSlotUids.has(s.uid));
+  const remainingCredits = remainingSlots.reduce((sum, s) => sum + s.credits, 0);
+  const desc = remainingSlots.length > 0
+    ? `จัดวางวิชาสาย ${trackName} ลงในตารางปี 3–4 จำนวน ${filledCount} วิชาเรียบร้อยแล้ว (เหลือช่องว่าง ${remainingSlots.length} ช่อง รวม ${remainingCredits} หน่วยกิตสำหรับเลือกเพิ่ม)`
     : `จัดวางวิชาสาย ${trackName} ลงในตารางปี 3–4 ครบทั้ง ${filledCount} วิชาเรียบร้อยแล้วครับ`;
   showToast('จัดวิชาตามแพ็กเกจเรียบร้อย', desc);
 
-  // ล้างคลาสเอฟเฟกต์กระพริบหลังจบแอนิเมชัน
   FLASH_TIMER = setTimeout(() => {
     RECENTLY_UPDATED_UIDS.clear();
     document.querySelectorAll('.course-card.just-updated').forEach(el => {
@@ -770,7 +846,6 @@ function renderRoadmap() {
   const maxYear = Math.max(STATE.maxYear, ...STATE.items.map(i => i.year), 4);
   let html = '';
 
-  // ป้ายแสดงสถานะสายความเชี่ยวชาญปัจจุบัน
   if (STATE.selectedTrack && DB.trackNames[STATE.selectedTrack]) {
     html += `
       <div class="active-track-banner">
@@ -1056,7 +1131,7 @@ function openPickerForSlot(uid) {
   const slot = STATE.items.find(i => i.uid === uid);
   if (!slot) return;
   PICKER_CTX = { mode: 'replace', uid, year: slot.year, sem: slot.sem, category: slot.category };
-  document.getElementById('pickerTitle').textContent = `เลือกวิชาสำหรับช่อง: ${slot.originalTitle}`;
+  document.getElementById('pickerTitle').textContent = `เลือกวิชาสำหรับช่อง: ${slot.title} (${slot.credits} หน่วยกิต)`;
   setupPickerFilters(slot.category === 'Major_Elective');
   document.getElementById('customAddBox').style.display = 'none';
   document.getElementById('pickerModal').classList.add('open');
@@ -1200,14 +1275,51 @@ function pickCourse(courseId) {
   if (PICKER_CTX.mode === 'replace') {
     const slot = STATE.items.find(i => i.uid === PICKER_CTX.uid);
     if (slot) {
+      const prevCredits = slot.credits;
       slot.courseId = c.course_id;
       slot.title = c.title_th;
       slot.credits = c.credits;
       slot.trackNote = '';
+
+      if (slot.category === 'Major_Elective') {
+        const diff = prevCredits - c.credits;
+        if (diff > 0) {
+          // หน่วยกิตน้อยกว่าเดิม -> งอกช่องว่างส่วนที่เหลือเพิ่มในเทอมเดียวกัน
+          const child = createRemainderSlot(slot, diff);
+          if (child) {
+            showToast('แยกช่องหน่วยกิตอัตโนมัติ', `เพิ่มช่องว่างวิชาเอกเลือกคงเหลือ ${diff} หน่วยกิตในเทอมเดียวกันให้แล้วครับ`, 3600);
+          }
+        } else if (diff < 0) {
+          // หน่วยกิตมากกว่าเดิม -> ยุบหรือลดหน่วยกิตจากช่องว่างพี่น้องที่ยังไม่ถูกเลือก (ถ้ามี)
+          let needToAbsorb = Math.abs(diff);
+          const groupId = slot.slotGroupId || slot.uid;
+          const emptySiblings = STATE.items.filter(other =>
+            other.uid !== slot.uid &&
+            (other.slotGroupId || other.uid) === groupId &&
+            other.isPlaceholder &&
+            other.courseId === other.originalCourseId
+          );
+          for (const sib of emptySiblings) {
+            if (needToAbsorb <= 0) break;
+            if (sib.credits <= needToAbsorb) {
+              needToAbsorb -= sib.credits;
+              STATE.items = STATE.items.filter(x => x.uid !== sib.uid);
+            } else {
+              sib.credits -= needToAbsorb;
+              sib.originalCredits = sib.credits;
+              sib.title = `${sib.originalTitle} (คงเหลือ ${sib.credits} หน่วยกิต)`;
+              needToAbsorb = 0;
+            }
+          }
+        }
+      }
     }
   } else {
+    const newUid = `custom_${Date.now()}_${c.course_id}`;
     STATE.items.push({
-      uid: `custom_${Date.now()}_${c.course_id}`,
+      uid: newUid,
+      slotGroupId: newUid,
+      isSplitChild: false,
       year: PICKER_CTX.year,
       sem: PICKER_CTX.sem,
       courseId: c.course_id,
@@ -1275,9 +1387,12 @@ function retakeCourse(uid) {
   const nextYear = item.sem === 1 ? item.year : item.year + 1;
   const nextSem = item.sem === 1 ? 2 : 1;
   if (nextYear > STATE.maxYear) STATE.maxYear = nextYear;
+  const newUid = `retake_${Date.now()}_${item.courseId}`;
   STATE.items.push({
     ...item,
-    uid: `retake_${Date.now()}_${item.courseId}`,
+    uid: newUid,
+    slotGroupId: newUid,
+    isSplitChild: false,
     year: nextYear,
     sem: nextSem,
     status: 'planned'
@@ -1328,6 +1443,10 @@ function importPlanJSON(event) {
       const parsed = JSON.parse(e.target.result);
       if (parsed && Array.isArray(parsed.items)) {
         STATE = parsed;
+        STATE.items.forEach(it => {
+          if (!it.slotGroupId) it.slotGroupId = it.uid;
+          if (it.isSplitChild === undefined) it.isSplitChild = false;
+        });
         saveState();
         syncControlsFromState();
         renderAll();
@@ -1373,8 +1492,11 @@ function addCustomCourse() {
     return;
   }
 
+  const newUid = `extra_${Date.now()}_${code}`;
   STATE.items.push({
-    uid: `extra_${Date.now()}_${code}`,
+    uid: newUid,
+    slotGroupId: newUid,
+    isSplitChild: false,
     year: PICKER_CTX.year,
     sem: PICKER_CTX.sem,
     courseId: code,
