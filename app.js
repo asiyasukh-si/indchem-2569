@@ -525,13 +525,22 @@ function renderRoadmap() {
           if (hlRole === 'unlock') hlBadge = '<span class="tag tag-hl-unlock">ตัวต่อ</span>';
 
           html += `
-            <div class="course-card cat-${catGroup} status-${item.status} ${hlClass}" onclick="selectCourse('${item.courseId}', '${item.uid}')">
+            const phClass = item.isPlaceholder ? 'is-placeholder' : '';
+          let elecBadge = '';
+          if (item.isPlaceholder) {
+            if (catGroup === 'GE') elecBadge = '<span class="tag tag-elec-ge">เลือกศึกษาทั่วไป (GE)</span>';
+            else if (catGroup === 'MajorElec') elecBadge = '<span class="tag tag-elec-major">วิชาเอกเลือก</span>';
+            else if (catGroup === 'Free') elecBadge = '<span class="tag tag-elec-free">วิชาเลือกเสรี</span>';
+            else elecBadge = '<span class="tag tag-elec">ช่องวิชาเลือก</span>';
+          }
+          html += `
+            <div class="course-card cat-${catGroup} status-${item.status} ${phClass} ${hlClass}" onclick="selectCourse('${item.courseId}', '${item.uid}')">
               <div class="card-top">
                 <div>
                   <div class="card-id">
                     <span>${item.courseId}</span>
                     ${hlBadge}
-                    ${item.isPlaceholder ? '<span class="tag tag-elec">ช่องวิชาเลือก</span>' : ''}
+                    ${elecBadge}
                   </div>
                   <div class="card-title">${item.title}</div>
                 </div>
@@ -770,8 +779,14 @@ function renderPickerList() {
 
   let list = [...DB.courses];
 
-  if (PICKER_CTX.mode === 'replace' && PICKER_CTX.category === 'Major_Elective') {
-    list = list.filter(c => c.course_category === 'Major_Elective' || c.course_category === 'Free_Elective');
+if (PICKER_CTX.mode === 'replace') {
+    const slotGroup = getCategoryGroup(PICKER_CTX.category);
+    if (slotGroup === 'GE') {
+      list = list.filter(c => getCategoryGroup(c.course_category) === 'GE');
+    } else if (slotGroup === 'MajorElec') {
+      list = list.filter(c => c.course_category === 'Major_Elective');
+    }
+    // กรณี Free_Elective จะไม่กรองหมวด เพื่อให้เลือกได้ทุกวิชาที่ยังไม่ได้เรียน
   }
 
   if (trackFilter && trackFilter !== 'ALL') {
