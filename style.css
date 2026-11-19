@@ -535,3 +535,23 @@ select.styled-select {
   body { background: #fff; }
   .semester-box { break-inside: avoid; }
 }
+/* === แยกสีพื้นหลังและป้ายกำกับช่องวิชาเลือกตามหมวด === */
+.course-card.is-placeholder:not(.status-passed):not(.status-failed) {
+  border-style: dashed;
+}
+.course-card.is-placeholder:not(.status-passed):not(.status-failed).cat-GE {
+  background: #f0f9ff;
+  border-color: #7dd3fc;
+}
+.course-card.is-placeholder:not(.status-passed):not(.status-failed).cat-MajorElec {
+  background: #f0fdfa;
+  border-color: #5eead4;
+}
+.course-card.is-placeholder:not(.status-passed):not(.status-failed).cat-Free {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
+.tag-elec-ge { background: #e0f2fe; color: #0369a1; }
+.tag-elec-major { background: #ccfbf1; color: #0f766e; }
+.tag-elec-free { background: #fef3c7; color: #b45309; }
