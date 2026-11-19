@@ -43,9 +43,148 @@ let STATE = {
 let SELECTED_COURSE_ID = null;
 let PICKER_CTX = null;       // { mode: 'replace' | 'add', uid, year, sem, category }
 let MOVE_UID = null;
+let RECENTLY_UPDATED_UIDS = new Set();
+let FLASH_TIMER = null;
 
 function isCommonOptionRow(trackRow) {
   return String(trackRow && trackRow.is_common_option).trim().toUpperCase() === 'TRUE';
+}
+
+// =========================================================================
+// 0. UI Effects (Toast Notification, Flash Highlight, Active Track Banner)
+// =========================================================================
+function injectEffectStyles() {
+  if (document.getElementById('trackEffectStyles')) return;
+  const style = document.createElement('style');
+  style.id = 'trackEffectStyles';
+  style.textContent = `
+    .toast-container {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 380px;
+      width: calc(100% - 40px);
+      pointer-events: none;
+    }
+    .toast-msg {
+      pointer-events: auto;
+      background: #0f172a;
+      color: #f8fafc;
+      border-left: 5px solid #10b981;
+      border-radius: 10px;
+      padding: 12px 14px;
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.25);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      animation: toastSlideIn 0.28s ease-out;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    .toast-msg.hiding {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    .toast-title {
+      font-weight: 700;
+      font-size: 0.92rem;
+      margin-bottom: 3px;
+      color: #6ee7b7;
+    }
+    .toast-desc {
+      font-size: 0.84rem;
+      line-height: 1.45;
+      color: #e2e8f0;
+    }
+    .toast-close {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      font-size: 1.15rem;
+      line-height: 1;
+      cursor: pointer;
+      padding: 2px 4px;
+    }
+    .toast-close:hover {
+      color: #ffffff;
+    }
+    @keyframes toastSlideIn {
+      from { opacity: 0; transform: translateY(14px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes cardFlashGlow {
+      0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.65); background-color: #d1fae5; border-color: #10b981; }
+      35% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.25); background-color: #ecfdf5; border-color: #10b981; }
+      70% { box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15); background-color: #ecfdf5; border-color: #34d399; }
+      100% { box-shadow: none; }
+    }
+    .course-card.just-updated {
+      animation: cardFlashGlow 2.8s ease-out;
+    }
+    .active-track-banner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      border-left: 4px solid #059669;
+      color: #065f46;
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+      font-size: 0.88rem;
+    }
+    .active-track-banner strong {
+      color: #064e3b;
+    }
+    @media print {
+      .toast-container, .active-track-banner .btn { display: none !important; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function showToast(title, description, duration = 4200) {
+  let container = document.getElementById('toastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = 'toast-msg';
+  toast.innerHTML = `
+    <div>
+      <div class="toast-title">${title}</div>
+      <div class="toast-desc">${description}</div>
+    </div>
+    <button class="toast-close" aria-label="ปิด">&times;</button>
+  `;
+
+  const dismiss = () => {
+    if (toast.classList.contains('hiding')) return;
+    toast.classList.add('hiding');
+    setTimeout(() => toast.remove(), 300);
+  };
+
+  toast.querySelector('.toast-close').addEventListener('click', dismiss);
+  container.appendChild(toast);
+  setTimeout(dismiss, duration);
+}
+
+function scrollToYear(year) {
+  const el = document.getElementById(`year-section-${year}`);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 // =========================================================================
@@ -114,6 +253,7 @@ async function fetchSheet(sheetName) {
 }
 
 async function initApp() {
+  injectEffectStyles();
   const loadingBox = document.getElementById('loadingBox');
   if (!SPREADSHEET_ID || SPREADSHEET_ID === 'PUT_YOUR_GOOGLE_SHEET_ID_HERE') {
     loadingBox.classList.add('error');
@@ -164,7 +304,6 @@ async function initApp() {
             isCommon
           });
         } else if (!isCommon) {
-          // หากมีซ้ำในกลุ่มเดียวกัน ให้ถือว่าวิชาเฉพาะกลุ่ม (FALSE) มีน้ำหนักมากกว่า
           existing.isCommon = false;
         }
       }
@@ -277,6 +416,7 @@ function switchPlanType(newType) {
     ...it,
     status: passedMap[it.courseId] ? 'passed' : 'planned'
   }));
+  RECENTLY_UPDATED_UIDS.clear();
   saveState();
   syncControlsFromState();
   renderAll();
@@ -296,18 +436,21 @@ function resetToDefault() {
   STATE.extraSummers = [];
   STATE.items = buildDefaultItems(STATE.planType);
   SELECTED_COURSE_ID = null;
+  RECENTLY_UPDATED_UIDS.clear();
   saveState();
   syncControlsFromState();
   renderAll();
+  showToast('คืนค่าแผนมาตรฐานเรียบร้อย', 'ล้างการปรับแต่งและวิชาที่เลือกไว้ทั้งหมดแล้วครับ');
 }
 
 function applySelectedTrack() {
   const trackId = document.getElementById('trackSelect').value;
   if (!trackId) {
-    alert('กรุณาเลือกสายความเชี่ยวชาญจากรายการก่อนครับ');
+    showToast('กรุณาเลือกสายความเชี่ยวชาญ', 'เลือกกลุ่มความเชี่ยวชาญจากรายการด้านซ้ายก่อนกดปุ่มนี้ครับ', 3200);
     return;
   }
   STATE.selectedTrack = trackId;
+  const trackName = DB.trackNames[trackId] || trackId;
 
   const requiredIds = new Set(STATE.items.filter(i => !i.isPlaceholder).map(i => i.courseId));
   const allTrackRows = DB.tracks.filter(t => t.track_id === trackId);
@@ -404,8 +547,34 @@ function applySelectedTrack() {
     }
   });
 
+  // เก็บรายการช่องที่อัปเดตเพื่อให้เกิดเอฟเฟกต์กระพริบเน้นสี
+  RECENTLY_UPDATED_UIDS = new Set(majorElecSlots.map(s => s.uid));
+  if (FLASH_TIMER) clearTimeout(FLASH_TIMER);
+
   saveState();
   renderAll();
+
+  // เลื่อนหน้าจอลงไปยังชั้นปีแรกที่มีช่องวิชาเอกเลือก (ปกติคือชั้นปีที่ 3)
+  const targetYear = majorElecSlots.length > 0
+    ? Math.min(...majorElecSlots.map(s => s.year))
+    : 3;
+  scrollToYear(targetYear);
+
+  // แสดงป๊อปอัปแจ้งเตือนสรุปผล
+  const filledCount = filledSlotUids.size;
+  const remainingCount = majorElecSlots.length - filledCount;
+  const desc = remainingCount > 0
+    ? `จัดวางวิชาสาย ${trackName} ลงในตารางปี 3–4 จำนวน ${filledCount} วิชาเรียบร้อยแล้ว (เหลือช่องว่าง ${remainingCount} ช่องสำหรับเลือกเพิ่ม)`
+    : `จัดวางวิชาสาย ${trackName} ลงในตารางปี 3–4 ครบทั้ง ${filledCount} วิชาเรียบร้อยแล้วครับ`;
+  showToast('จัดวิชาตามแพ็กเกจเรียบร้อย', desc);
+
+  // ล้างคลาสเอฟเฟกต์กระพริบหลังจบแอนิเมชัน
+  FLASH_TIMER = setTimeout(() => {
+    RECENTLY_UPDATED_UIDS.clear();
+    document.querySelectorAll('.course-card.just-updated').forEach(el => {
+      el.classList.remove('just-updated');
+    });
+  }, 3000);
 }
 
 // =========================================================================
@@ -589,11 +758,21 @@ function renderRoadmap() {
   const maxYear = Math.max(STATE.maxYear, ...STATE.items.map(i => i.year), 4);
   let html = '';
 
+  // ป้ายแสดงสถานะสายความเชี่ยวชาญปัจจุบัน
+  if (STATE.selectedTrack && DB.trackNames[STATE.selectedTrack]) {
+    html += `
+      <div class="active-track-banner">
+        <div>กำลังแสดงแผนตามสายความเชี่ยวชาญ: <strong>${DB.trackNames[STATE.selectedTrack]}</strong></div>
+        <button class="btn btn-sm" onclick="scrollToYear(3)">ไปที่วิชาเอกเลือก (ปี 3–4)</button>
+      </div>
+    `;
+  }
+
   for (let y = 1; y <= maxYear; y++) {
     const hasSummer = STATE.items.some(i => i.year === y && i.sem === 3) || STATE.extraSummers.includes(y);
     const sems = hasSummer ? [1, 2, 3] : [1, 2];
 
-    html += `<section class="year-section">`;
+    html += `<section class="year-section" id="year-section-${y}">`;
     html += `
       <div class="year-header">
         <div class="year-title">ชั้นปีที่ ${y}</div>
@@ -625,6 +804,7 @@ function renderRoadmap() {
           const hlRole = getHighlightRole(item.courseId);
           const warnings = validateItem(item);
           const hlClass = hlRole ? `hl-${hlRole}` : '';
+          const flashClass = RECENTLY_UPDATED_UIDS.has(item.uid) ? 'just-updated' : '';
 
           let hlBadge = '';
           if (hlRole === 'prereq') hlBadge = '<span class="tag tag-hl-prereq">ตัวลงก่อน</span>';
@@ -645,7 +825,7 @@ function renderRoadmap() {
           }
 
           html += `
-            <div class="course-card cat-${catGroup} status-${item.status} ${phClass} ${hlClass}" onclick="selectCourse('${item.courseId}', '${item.uid}')">
+            <div class="course-card cat-${catGroup} status-${item.status} ${phClass} ${hlClass} ${flashClass}" onclick="selectCourse('${item.courseId}', '${item.uid}')">
               <div class="card-top">
                 <div>
                   <div class="card-id">
@@ -1142,7 +1322,7 @@ function importPlanJSON(event) {
         saveState();
         syncControlsFromState();
         renderAll();
-        alert('นำเข้าแผนการเรียนเรียบร้อยแล้วครับ');
+        showToast('นำเข้าแผนการเรียนเรียบร้อย', 'โหลดข้อมูลแผนการเรียนจากไฟล์ของคุณลงตารางแล้วครับ');
       }
     } catch (err) {
       alert('ไฟล์แผนการเรียนไม่ถูกต้อง');
