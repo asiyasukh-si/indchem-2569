@@ -36,7 +36,7 @@ let STATE = {
   flexibleMode: false,
   maxYear: 4,
   extraSummers: [],          // e.g. [1, 2]
-  items: []                  // { uid, year, sem, courseId, title, credits, category, isPlaceholder, isExtra, placeholderRule, status }
+  items: []                  // { uid, year, sem, courseId, originalCourseId, title, originalTitle, credits, originalCredits, category, isPlaceholder, isExtra, placeholderRule, trackNote, status }
 };
 
 let SELECTED_COURSE_ID = null;
@@ -191,6 +191,7 @@ function buildDefaultItems(planType) {
     .map((p, idx) => {
       const isPh = String(p.is_placeholder).toUpperCase() === 'TRUE';
       const cInfo = DB.courseMap[p.course_id];
+      const baseCredits = cInfo ? cInfo.credits : (Number(p.credits) || 0);
       return {
         uid: `slot_${idx}_${p.course_id}`,
         year: Number(p.year_level) || 1,
@@ -199,11 +200,13 @@ function buildDefaultItems(planType) {
         originalCourseId: p.course_id,
         title: cInfo ? cInfo.title_th : p.course_title_th,
         originalTitle: p.course_title_th,
-        credits: cInfo ? cInfo.credits : (Number(p.credits) || 0),
+        credits: baseCredits,
+        originalCredits: baseCredits,
         category: p.course_type || (cInfo ? cInfo.course_category : 'Major_Required'),
         isPlaceholder: isPh,
         isExtra: false,
         placeholderRule: p.placeholder_rule || '',
+        trackNote: '',
         status: 'planned'
       };
     });
@@ -286,37 +289,86 @@ function applySelectedTrack() {
   STATE.selectedTrack = trackId;
 
   const requiredIds = new Set(STATE.items.filter(i => !i.isPlaceholder).map(i => i.courseId));
-  const trackCourses = DB.tracks
-    .filter(t => t.track_id === trackId && !requiredIds.has(t.course_id))
+  const allTrackRows = DB.tracks.filter(t => t.track_id === trackId);
+  const trackCourses = allTrackRows
+    .filter(t => t.course_id && !requiredIds.has(t.course_id))
     .sort((a, b) => (a.priority_level || '').localeCompare(b.priority_level || ''));
 
-  const usedIds = new Set();
+  const fallbackNoteObj = allTrackRows.find(t => t.fallback_note_th && t.fallback_note_th.trim());
+  const fallbackNote = fallbackNoteObj ? fallbackNoteObj.fallback_note_th.trim() : '';
+
   const majorElecSlots = STATE.items.filter(i => i.isPlaceholder && i.category === 'Major_Elective');
 
+  // รีเซ็ตช่องวิชาเอกเลือกทั้งหมดกลับสู่ค่าตั้งต้นก่อนจัดวางใหม่
   majorElecSlots.forEach(slot => {
-    const isLabSlot = slot.credits === 1 || slot.originalCourseId.includes('LAB');
-    let candidate = trackCourses.find(tc => {
+    const origInfo = DB.courseMap[slot.originalCourseId];
+    slot.courseId = slot.originalCourseId;
+    slot.title = origInfo ? origInfo.title_th : slot.originalTitle;
+    slot.credits = slot.originalCredits || (origInfo ? origInfo.credits : slot.credits);
+    slot.trackNote = '';
+  });
+
+  const usedIds = new Set();
+  const filledSlotUids = new Set();
+
+  const assignToSlot = (slot, candidate) => {
+    usedIds.add(candidate.course_id);
+    filledSlotUids.add(slot.uid);
+    const cInfo = DB.courseMap[candidate.course_id];
+    slot.courseId = candidate.course_id;
+    slot.title = cInfo ? cInfo.title_th : candidate.course_title_th;
+    slot.credits = cInfo ? cInfo.credits : (Number(candidate.credits) || slot.credits);
+    slot.trackNote = '';
+  };
+
+  const isCreditTypeMatch = (slot, tc) => {
+    const isLabSlot = (slot.originalCredits || slot.credits) === 1 || String(slot.originalCourseId).includes('LAB');
+    const cInfo = DB.courseMap[tc.course_id];
+    const cr = cInfo ? cInfo.credits : Number(tc.credits);
+    return isLabSlot ? cr === 1 : cr !== 1;
+  };
+
+  // รอบที่ 1: จับคู่ตรงทั้งชั้นปี (recommended_year) และภาคเรียน (recommended_sem) ที่อาจารย์แนะนำ
+  majorElecSlots.forEach(slot => {
+    if (filledSlotUids.has(slot.uid)) return;
+    const candidate = trackCourses.find(tc => {
       if (usedIds.has(tc.course_id)) return false;
+      if (!isCreditTypeMatch(slot, tc)) return false;
+      const recY = Number(tc.recommended_year);
+      const recS = Number(tc.recommended_sem);
+      return recY === slot.year && recS === slot.sem;
+    });
+    if (candidate) assignToSlot(slot, candidate);
+  });
+
+  // รอบที่ 2: จับคู่ตรงภาคเรียนที่แนะนำ (recommended_sem) หรือเทอมที่เปิดสอน (open_term_suggested)
+  majorElecSlots.forEach(slot => {
+    if (filledSlotUids.has(slot.uid)) return;
+    const candidate = trackCourses.find(tc => {
+      if (usedIds.has(tc.course_id)) return false;
+      if (!isCreditTypeMatch(slot, tc)) return false;
+      const recS = Number(tc.recommended_sem);
       const cInfo = DB.courseMap[tc.course_id];
-      const cr = cInfo ? cInfo.credits : Number(tc.credits);
-      if (isLabSlot ? cr !== 1 : cr === 1) return false;
-      const termMatch = cInfo && cInfo.open_term_suggested && cInfo.open_term_suggested.includes(`T${slot.sem}`);
+      const termMatch = recS === slot.sem || (cInfo && cInfo.open_term_suggested && cInfo.open_term_suggested.includes(`T${slot.sem}`));
       return termMatch;
     });
-    if (!candidate) {
-      candidate = trackCourses.find(tc => {
-        if (usedIds.has(tc.course_id)) return false;
-        const cInfo = DB.courseMap[tc.course_id];
-        const cr = cInfo ? cInfo.credits : Number(tc.credits);
-        return isLabSlot ? cr === 1 : cr !== 1;
-      });
-    }
-    if (candidate) {
-      usedIds.add(candidate.course_id);
-      const cInfo = DB.courseMap[candidate.course_id];
-      slot.courseId = candidate.course_id;
-      slot.title = cInfo ? cInfo.title_th : candidate.course_title_th;
-      slot.credits = cInfo ? cInfo.credits : (Number(candidate.credits) || slot.credits);
+    if (candidate) assignToSlot(slot, candidate);
+  });
+
+  // รอบที่ 3: เติมรายวิชาที่เหลือในกลุ่มลงในช่องว่างที่ยังเหลือ
+  majorElecSlots.forEach(slot => {
+    if (filledSlotUids.has(slot.uid)) return;
+    const candidate = trackCourses.find(tc => {
+      if (usedIds.has(tc.course_id)) return false;
+      return isCreditTypeMatch(slot, tc);
+    });
+    if (candidate) assignToSlot(slot, candidate);
+  });
+
+  // รอบที่ 4: ช่องที่ยังว่างอยู่ (กรณีกลุ่มมีวิชาไม่ครบจำนวนช่อง) ให้แสดงคำแนะนำ fallback_note_th
+  majorElecSlots.forEach(slot => {
+    if (!filledSlotUids.has(slot.uid) && fallbackNote) {
+      slot.trackNote = fallbackNote;
     }
   });
 
@@ -571,6 +623,7 @@ function renderRoadmap() {
                   </div>
                   <div class="card-title">${item.title}</div>
                   ${DB.courseMap[item.courseId]?.title_en ? `<div class="card-title-en">(${DB.courseMap[item.courseId].title_en})</div>` : ''}
+                  ${item.trackNote ? `<div style="font-size:0.78rem;color:#0f766e;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;padding:6px 8px;margin-top:6px;line-height:1.4;"><strong>คำแนะนำกลุ่ม:</strong> ${item.trackNote}</div>` : ''}
                 </div>
                 <div onclick="event.stopPropagation()">
                   ${!STATE.flexibleMode ? `
@@ -685,6 +738,15 @@ function openDrawer(courseId, uid) {
         <ul style="padding-left:18px;font-size:0.86rem;">
           ${warnings.map(w => `<li>${w}</li>`).join('')}
         </ul>
+      </div>
+    `;
+  }
+
+  if (item && item.trackNote) {
+    body += `
+      <div class="detail-block" style="background:#ecfdf5;border:1px solid #a7f3d0;padding:10px;border-radius:8px;color:#065f46;">
+        <h4 style="color:#065f46;margin-bottom:4px;">คำแนะนำจากอาจารย์ประจำกลุ่ม</h4>
+        <p style="font-size:0.88rem;line-height:1.45;">${item.trackNote}</p>
       </div>
     `;
   }
@@ -874,6 +936,7 @@ function pickCourse(courseId) {
       slot.courseId = c.course_id;
       slot.title = c.title_th;
       slot.credits = c.credits;
+      slot.trackNote = '';
     }
   } else {
     STATE.items.push({
@@ -885,10 +948,12 @@ function pickCourse(courseId) {
       title: c.title_th,
       originalTitle: c.title_th,
       credits: c.credits,
+      originalCredits: c.credits,
       category: c.course_category || 'Major_Elective',
       isPlaceholder: false,
       isExtra: true,
       placeholderRule: '',
+      trackNote: '',
       status: 'planned'
     });
   }
@@ -1050,10 +1115,12 @@ function addCustomCourse() {
     title: title,
     originalTitle: title,
     credits: credits,
+    originalCredits: credits,
     category: category,
     isPlaceholder: false,
     isExtra: true,
     placeholderRule: '',
+    trackNote: '',
     status: 'planned'
   });
 
