@@ -524,7 +524,6 @@ function renderRoadmap() {
           if (hlRole === 'coreq') hlBadge = '<span class="tag tag-hl-coreq">วิชาควบ</span>';
           if (hlRole === 'unlock') hlBadge = '<span class="tag tag-hl-unlock">ตัวต่อ</span>';
 
-          html += `
             const phClass = item.isPlaceholder ? 'is-placeholder' : '';
           let elecBadge = '';
           if (item.isPlaceholder) {
