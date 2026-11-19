@@ -37,7 +37,7 @@ let STATE = {
   flexibleMode: false,
   maxYear: 4,
   extraSummers: [],          // e.g. [1, 2]
-  items: []                  // { uid, slotGroupId, isSplitChild, year, sem, courseId, originalCourseId, title, originalTitle, credits, originalCredits, category, isPlaceholder, isExtra, placeholderRule, trackNote, status }
+  items: []                  // { uid, slotGroupId, isSplitChild, isTrackOverflow, year, sem, courseId, originalCourseId, title, originalTitle, credits, originalCredits, category, isPlaceholder, isExtra, placeholderRule, trackNote, status }
 };
 
 let SELECTED_COURSE_ID = null;
@@ -66,7 +66,7 @@ function injectEffectStyles() {
       display: flex;
       flex-direction: column;
       gap: 10px;
-      max-width: 380px;
+      max-width: 400px;
       width: calc(100% - 40px);
       pointer-events: none;
     }
@@ -143,6 +143,11 @@ function injectEffectStyles() {
     .active-track-banner strong {
       color: #064e3b;
     }
+    .tag-overflow {
+      background: #fef3c7;
+      color: #b45309;
+      border: 1px solid #fcd34d;
+    }
     @media print {
       .toast-container, .active-track-banner .btn { display: none !important; }
     }
@@ -177,7 +182,7 @@ function hideLegacyLegendBar() {
   });
 }
 
-function showToast(title, description, duration = 4200) {
+function showToast(title, description, duration = 4800) {
   let container = document.getElementById('toastContainer');
   if (!container) {
     container = document.createElement('div');
@@ -368,7 +373,7 @@ function populateTrackDropdown() {
 }
 
 // =========================================================================
-// 2. State Management & Credit-Aware Slot Splitting
+// 2. State Management & Credit-Aware Slot Splitting / Overflow
 // =========================================================================
 function buildDefaultItems(planType) {
   const allowedTypes = planType === 'Coop'
@@ -386,6 +391,7 @@ function buildDefaultItems(planType) {
         uid,
         slotGroupId: uid,
         isSplitChild: false,
+        isTrackOverflow: false,
         year: Number(p.year_level) || 1,
         sem: Number(p.semester) || 1,
         courseId: p.course_id,
@@ -413,6 +419,7 @@ function createRemainderSlot(parentSlot, remCredits) {
     uid: childUid,
     slotGroupId: groupId,
     isSplitChild: true,
+    isTrackOverflow: false,
     year: parentSlot.year,
     sem: parentSlot.sem,
     courseId: parentSlot.originalCourseId,
@@ -437,6 +444,46 @@ function createRemainderSlot(parentSlot, remCredits) {
   return childSlot;
 }
 
+function createTrackOverflowItem(year, sem, candidate, credits) {
+  const cInfo = DB.courseMap[candidate.course_id];
+  const uid = `trk_overflow_${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${candidate.course_id}`;
+  const item = {
+    uid,
+    slotGroupId: uid,
+    isSplitChild: false,
+    isTrackOverflow: true,
+    year,
+    sem,
+    courseId: candidate.course_id,
+    originalCourseId: candidate.course_id,
+    title: cInfo ? cInfo.title_th : candidate.course_title_th,
+    originalTitle: cInfo ? cInfo.title_th : candidate.course_title_th,
+    credits,
+    originalCredits: credits,
+    category: 'Major_Elective',
+    isPlaceholder: false,
+    isExtra: true,
+    placeholderRule: '',
+    trackNote: '',
+    status: 'planned'
+  };
+
+  // แทรกต่อท้ายวิชาสุดท้ายในชั้นปีและเทอมเดียวกัน
+  let insertIdx = -1;
+  for (let i = STATE.items.length - 1; i >= 0; i--) {
+    if (STATE.items[i].year === year && STATE.items[i].sem === sem) {
+      insertIdx = i + 1;
+      break;
+    }
+  }
+  if (insertIdx !== -1) {
+    STATE.items.splice(insertIdx, 0, item);
+  } else {
+    STATE.items.push(item);
+  }
+  return item;
+}
+
 function loadOrBuildState() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -444,10 +491,10 @@ function loadOrBuildState() {
       const parsed = JSON.parse(saved);
       if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
         STATE = parsed;
-        // รองรับข้อมูลเก่าที่ยังไม่มี slotGroupId / isSplitChild
         STATE.items.forEach(it => {
           if (!it.slotGroupId) it.slotGroupId = it.uid;
           if (it.isSplitChild === undefined) it.isSplitChild = false;
+          if (it.isTrackOverflow === undefined) it.isTrackOverflow = false;
         });
         syncControlsFromState();
         return;
@@ -522,6 +569,12 @@ function applySelectedTrack() {
   STATE.selectedTrack = trackId;
   const trackName = DB.trackNames[trackId] || trackId;
 
+  // ล้างช่องย่อยที่เคยแตกและช่องที่เคยงอกเกินของสายเก่าออกก่อน
+  STATE.items = STATE.items.filter(i =>
+    !(i.isSplitChild && i.category === 'Major_Elective') &&
+    !i.isTrackOverflow
+  );
+
   const requiredIds = new Set(STATE.items.filter(i => !i.isPlaceholder).map(i => i.courseId));
   const allTrackRows = DB.tracks.filter(t => t.track_id === trackId);
   const trackCourses = allTrackRows
@@ -534,10 +587,10 @@ function applySelectedTrack() {
   const fallbackNoteObj = allTrackRows.find(t => t.fallback_note_th && t.fallback_note_th.trim());
   const fallbackNote = fallbackNoteObj ? fallbackNoteObj.fallback_note_th.trim() : '';
 
-  // ยุบช่องย่อยที่เคยแตกไว้ก่อนหน้า แล้วรีเซ็ตช่องวิชาเอกเลือกทั้งหมดกลับสู่ช่องมาตรฐานเดิม
-  STATE.items = STATE.items.filter(i => !(i.isSplitChild && i.category === 'Major_Elective'));
   const majorElecSlots = STATE.items.filter(i => i.isPlaceholder && i.category === 'Major_Elective');
+  const baseMajorElecCredits = majorElecSlots.reduce((sum, s) => sum + (s.originalCredits || 3), 0);
 
+  // รีเซ็ตช่องวิชาเอกเลือกมาตรฐานทั้งหมดกลับสู่ค่าตั้งต้น
   majorElecSlots.forEach(slot => {
     const origInfo = DB.courseMap[slot.originalCourseId];
     slot.slotGroupId = slot.slotGroupId || slot.uid;
@@ -549,6 +602,7 @@ function applySelectedTrack() {
 
   const usedIds = new Set();
   const filledSlotUids = new Set();
+  const overflowItems = [];
 
   const getCourseCredits = (tc) => {
     const cInfo = DB.courseMap[tc.course_id];
@@ -563,7 +617,6 @@ function applySelectedTrack() {
       filterFn(slot)
     );
     if (eligible.length === 0) return null;
-    // เลือกช่องที่หน่วยกิตพอดีหรือใกล้เคียงที่สุดก่อน (เช่น ลงแลป 1 นก. ในช่องคงเหลือ 1 นก. ก่อนแตกช่อง 3 นก. ใหม่)
     eligible.sort((a, b) => a.credits - b.credits);
     return eligible[0];
   };
@@ -580,15 +633,14 @@ function applySelectedTrack() {
     slot.credits = cr;
     slot.trackNote = '';
 
-    // หากหน่วยกิตน้อยกว่าช่องที่มีอยู่ ให้แตกช่องว่างส่วนที่เหลือออกมาต่อท้ายในเทอมเดียวกันทันที
     if (rem > 0) {
       const child = createRemainderSlot(slot, rem);
       if (child) majorElecSlots.push(child);
     }
   };
 
-  const fillSlotsWithPool = (pool) => {
-    // รอบที่ 1: จับคู่ตรงทั้งชั้นปี (recommended_year) และภาคเรียน (recommended_sem) ที่อาจารย์แนะนำ
+  const fillSlotsWithPool = (pool, allowOverflow) => {
+    // รอบที่ 1: จับคู่ตรงทั้งชั้นปี (recommended_year) และภาคเรียน (recommended_sem)
     pool.forEach(tc => {
       if (usedIds.has(tc.course_id)) return;
       const recY = Number(tc.recommended_year);
@@ -596,7 +648,17 @@ function applySelectedTrack() {
       if (!recY || !recS) return;
       const cr = getCourseCredits(tc);
       const slot = findBestSlot(s => s.year === recY && s.sem === recS, cr);
-      if (slot) assignToSlot(slot, tc);
+      if (slot) {
+        assignToSlot(slot, tc);
+      } else if (allowOverflow) {
+        // ในแผนสหกิจศึกษา ไม่สร้างช่องงอกเพิ่มลงปี 4 เทอม 2 (ช่วงออกสหกิจศึกษา)
+        const isCoopBlockedTerm = STATE.planType === 'Coop' && recY === 4 && recS === 2;
+        if (!isCoopBlockedTerm) {
+          usedIds.add(tc.course_id);
+          const ovItem = createTrackOverflowItem(recY, recS, tc, cr);
+          overflowItems.push(ovItem);
+        }
+      }
     });
 
     // รอบที่ 2: จับคู่ตรงภาคเรียนที่แนะนำ (recommended_sem) หรือเทอมที่เปิดสอน (open_term_suggested)
@@ -613,7 +675,7 @@ function applySelectedTrack() {
       if (slot) assignToSlot(slot, tc);
     });
 
-    // รอบที่ 3: เติมรายวิชาที่เหลือในชุดลงในช่องว่างที่ยังเหลือ
+    // รอบที่ 3: เติมรายวิชาที่เหลือลงในช่องว่างที่ยังเหลือ
     pool.forEach(tc => {
       if (usedIds.has(tc.course_id)) return;
       const cr = getCourseCredits(tc);
@@ -622,11 +684,11 @@ function applySelectedTrack() {
     });
   };
 
-  // ขั้นที่ 1: ลงวิชาเฉพาะกลุ่มหลัก (is_common_option = FALSE)
-  fillSlotsWithPool(coreTrackCourses);
+  // ขั้นที่ 1: ลงวิชาเฉพาะกลุ่มหลัก (is_common_option = FALSE) โดยอนุญาตให้งอกช่องเพิ่มตามเทอมแนะนำได้
+  fillSlotsWithPool(coreTrackCourses, true);
 
-  // ขั้นที่ 2: เติมวิชาตัวเลือกร่วมของกลุ่มนั้น (is_common_option = TRUE) ลงช่องที่ยังว่าง
-  fillSlotsWithPool(commonTrackCourses);
+  // ขั้นที่ 2: เติมวิชาตัวเลือกร่วมของกลุ่มนั้น (is_common_option = TRUE) เฉพาะในช่องว่างที่เหลือ
+  fillSlotsWithPool(commonTrackCourses, false);
 
   // ขั้นที่ 3: ช่องที่ยังว่างอยู่หลังเติมครบทั้ง 2 ขั้น ให้แสดงคำแนะนำ fallback_note_th
   majorElecSlots.forEach(slot => {
@@ -635,27 +697,43 @@ function applySelectedTrack() {
     }
   });
 
-  // เก็บรายการช่องที่อัปเดตเพื่อให้เกิดเอฟเฟกต์กระพริบเน้นสี
-  RECENTLY_UPDATED_UIDS = new Set(majorElecSlots.map(s => s.uid));
+  // เก็บรายการช่องที่อัปเดตและช่องที่งอกเพิ่มเพื่อให้เกิดเอฟเฟกต์กระพริบเน้นสี
+  RECENTLY_UPDATED_UIDS = new Set([
+    ...majorElecSlots.map(s => s.uid),
+    ...overflowItems.map(o => o.uid)
+  ]);
   if (FLASH_TIMER) clearTimeout(FLASH_TIMER);
 
   saveState();
   renderAll();
 
-  // เลื่อนหน้าจอลงไปยังชั้นปีแรกที่มีช่องวิชาเอกเลือก (ปกติคือชั้นปีที่ 3)
   const targetYear = majorElecSlots.length > 0
     ? Math.min(...majorElecSlots.map(s => s.year))
     : 3;
   scrollToYear(targetYear);
 
-  // แสดงป๊อปอัปแจ้งเตือนสรุปผล
-  const filledCount = filledSlotUids.size;
+  // สรุปผลและแจ้งเตือนกรณีลงเกินเกณฑ์ขั้นต่ำ
+  const totalPlacedCount = filledSlotUids.size + overflowItems.length;
   const remainingSlots = majorElecSlots.filter(s => !filledSlotUids.has(s.uid));
   const remainingCredits = remainingSlots.reduce((sum, s) => sum + s.credits, 0);
-  const desc = remainingSlots.length > 0
-    ? `จัดวางวิชาสาย ${trackName} ลงในตารางปี 3–4 จำนวน ${filledCount} วิชาเรียบร้อยแล้ว (เหลือช่องว่าง ${remainingSlots.length} ช่อง รวม ${remainingCredits} หน่วยกิตสำหรับเลือกเพิ่ม)`
-    : `จัดวางวิชาสาย ${trackName} ลงในตารางปี 3–4 ครบทั้ง ${filledCount} วิชาเรียบร้อยแล้วครับ`;
-  showToast('จัดวิชาตามแพ็กเกจเรียบร้อย', desc);
+  const overflowCredits = overflowItems.reduce((sum, o) => sum + o.credits, 0);
+
+  const plannedMajorElecCredits = STATE.items
+    .filter(i => i.status !== 'failed' && i.category === 'Major_Elective')
+    .reduce((sum, i) => sum + i.credits, 0);
+  const overMinCredits = Math.max(0, plannedMajorElecCredits - baseMajorElecCredits);
+
+  let desc = `จัดวางวิชาสาย ${trackName} ลงตารางปี 3–4 จำนวน ${totalPlacedCount} วิชาเรียบร้อยแล้ว`;
+  if (overflowItems.length > 0) {
+    desc += ` (งอกเพิ่มตามเทอมแนะนำ ${overflowItems.length} วิชา / +${overflowCredits} นก.)`;
+  }
+  if (remainingSlots.length > 0) {
+    desc += ` เหลือช่องว่าง ${remainingSlots.length} ช่อง (${remainingCredits} นก.)`;
+  }
+  if (overMinCredits > 0) {
+    desc += `<br><span style="color:#fde68a;font-weight:600;">หมายเหตุ: วางแผนวิชาเอกเลือกเกินเกณฑ์ขั้นต่ำ +${overMinCredits} หน่วยกิต (กดปุ่มลบบนการ์ดที่งอกเพิ่มได้หากไม่ต้องการเรียนเกิน)</span>`;
+  }
+  showToast('จัดวิชาตามแพ็กเกจเรียบร้อย', desc, overMinCredits > 0 ? 6000 : 4500);
 
   FLASH_TIMER = setTimeout(() => {
     RECENTLY_UPDATED_UIDS.clear();
@@ -787,10 +865,17 @@ function renderSummary() {
   let html = cards.map(c => {
     const pct = Math.min(100, Math.round((c.data.passed / c.target) * 100));
     const isDone = c.data.passed >= c.target;
-    const extra = c.data.passed - c.target;
-    const statusText = isDone
-      ? (extra > 0 ? `<span style="color:var(--success);font-weight:600;">เกิน +${extra} นก.</span>` : `<span style="color:var(--success);font-weight:600;">ครบเกณฑ์</span>`)
-      : `ในแผน ${c.data.planned}`;
+    const extraPassed = c.data.passed - c.target;
+    const extraPlanned = c.data.planned - c.target;
+
+    let statusText = `ในแผน ${c.data.planned}`;
+    if (isDone) {
+      statusText = extraPassed > 0
+        ? `<span style="color:var(--success);font-weight:600;">ผ่านเกิน +${extraPassed} นก.</span>`
+        : `<span style="color:var(--success);font-weight:600;">ครบเกณฑ์</span>`;
+    } else if (extraPlanned > 0) {
+      statusText = `<span style="color:#b45309;font-weight:600;">ในแผน ${c.data.planned} (เกินขั้นต่ำ +${extraPlanned})</span>`;
+    }
 
     return `
       <div class="stat-card">
@@ -903,7 +988,9 @@ function renderRoadmap() {
 
           const phClass = item.isPlaceholder ? 'is-placeholder' : '';
           let elecBadge = '';
-          if (item.isPlaceholder) {
+          if (item.isTrackOverflow) {
+            elecBadge = '<span class="tag tag-overflow">วิชาเอกเลือก (เพิ่มตามสาย)</span>';
+          } else if (item.isPlaceholder) {
             if (catGroup === 'GE') elecBadge = '<span class="tag tag-elec-ge">เลือกศึกษาทั่วไป (GE)</span>';
             else if (catGroup === 'MajorElec') elecBadge = '<span class="tag tag-elec-major">วิชาเอกเลือก</span>';
             else if (catGroup === 'Free') elecBadge = '<span class="tag tag-elec-free">วิชาเลือกเสรี</span>';
@@ -947,14 +1034,14 @@ function renderRoadmap() {
                 <span>${item.credits} หน่วยกิต</span>
                 ${warnings.length > 0 ? `<span class="tag tag-warn" title="${warnings.join(' | ')}">แจ้งเตือนเงื่อนไข (${warnings.length})</span>` : ''}
               </div>
-              ${(item.isPlaceholder || item.isExtra || STATE.flexibleMode) ? `
+              ${(item.isPlaceholder || item.isExtra || item.isTrackOverflow || STATE.flexibleMode) ? `
                 <div class="card-actions" onclick="event.stopPropagation()">
-                  ${item.isPlaceholder ? (catGroup === 'Free'
+                  ${(item.isPlaceholder || item.isTrackOverflow) ? (catGroup === 'Free'
                     ? `<button class="btn btn-sm" onclick="editFreeElective('${item.uid}')">ระบุชื่อวิชาเอง (ไม่บังคับ)</button>`
                     : `<button class="btn btn-sm" onclick="openPickerForSlot('${item.uid}')">เลือก/เปลี่ยนวิชา</button>`) : ''}
                   ${STATE.flexibleMode ? `<button class="btn btn-sm" onclick="openMoveModal('${item.uid}')">ย้ายเทอม</button>` : ''}
                   ${STATE.flexibleMode && item.status === 'failed' ? `<button class="btn btn-sm btn-accent" onclick="retakeCourse('${item.uid}')">+ ลงเรียนซ้ำ</button>` : ''}
-                  ${(STATE.flexibleMode || item.isExtra) ? `<button class="btn btn-sm btn-danger-outline" onclick="removeItem('${item.uid}')">ลบ</button>` : ''}
+                  ${(STATE.flexibleMode || item.isExtra || item.isTrackOverflow) ? `<button class="btn btn-sm btn-danger-outline" onclick="removeItem('${item.uid}')">ลบ</button>` : ''}
                 </div>
               ` : ''}
             </div>
@@ -1211,7 +1298,6 @@ function renderPickerList() {
     );
   }
 
-  // เรียงลำดับ: หากกรองตามกลุ่ม ให้วิชาเฉพาะกลุ่ม (FALSE) ขึ้นก่อนตัวเลือกร่วม (TRUE) แล้วจึงเรียงรหัส 209xxx ขึ้นก่อน
   list.sort((a, b) => {
     if (selectedTrackCommonMap) {
       const aCommon = selectedTrackCommonMap[a.course_id] ? 1 : 0;
@@ -1281,16 +1367,14 @@ function pickCourse(courseId) {
       slot.credits = c.credits;
       slot.trackNote = '';
 
-      if (slot.category === 'Major_Elective') {
+      if (slot.category === 'Major_Elective' && slot.isPlaceholder) {
         const diff = prevCredits - c.credits;
         if (diff > 0) {
-          // หน่วยกิตน้อยกว่าเดิม -> งอกช่องว่างส่วนที่เหลือเพิ่มในเทอมเดียวกัน
           const child = createRemainderSlot(slot, diff);
           if (child) {
             showToast('แยกช่องหน่วยกิตอัตโนมัติ', `เพิ่มช่องว่างวิชาเอกเลือกคงเหลือ ${diff} หน่วยกิตในเทอมเดียวกันให้แล้วครับ`, 3600);
           }
         } else if (diff < 0) {
-          // หน่วยกิตมากกว่าเดิม -> ยุบหรือลดหน่วยกิตจากช่องว่างพี่น้องที่ยังไม่ถูกเลือก (ถ้ามี)
           let needToAbsorb = Math.abs(diff);
           const groupId = slot.slotGroupId || slot.uid;
           const emptySiblings = STATE.items.filter(other =>
@@ -1320,6 +1404,7 @@ function pickCourse(courseId) {
       uid: newUid,
       slotGroupId: newUid,
       isSplitChild: false,
+      isTrackOverflow: false,
       year: PICKER_CTX.year,
       sem: PICKER_CTX.sem,
       courseId: c.course_id,
@@ -1393,6 +1478,7 @@ function retakeCourse(uid) {
     uid: newUid,
     slotGroupId: newUid,
     isSplitChild: false,
+    isTrackOverflow: false,
     year: nextYear,
     sem: nextSem,
     status: 'planned'
@@ -1446,6 +1532,7 @@ function importPlanJSON(event) {
         STATE.items.forEach(it => {
           if (!it.slotGroupId) it.slotGroupId = it.uid;
           if (it.isSplitChild === undefined) it.isSplitChild = false;
+          if (it.isTrackOverflow === undefined) it.isTrackOverflow = false;
         });
         saveState();
         syncControlsFromState();
@@ -1497,6 +1584,7 @@ function addCustomCourse() {
     uid: newUid,
     slotGroupId: newUid,
     isSplitChild: false,
+    isTrackOverflow: false,
     year: PICKER_CTX.year,
     sem: PICKER_CTX.sem,
     courseId: code,
