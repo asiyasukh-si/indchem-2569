@@ -839,23 +839,35 @@ function applySelectedTrack() {
   // ขั้นที่ 2: เติมวิชาตัวเลือกร่วมของกลุ่มนั้น (is_common_option = TRUE) เฉพาะในช่องว่างที่เหลือ
   fillSlotsWithPool(commonTrackCourses, false);
 
-  // ขั้นที่ 3: รันเลขลำดับต่อเนื่อง "วิชาเอกเลือกตัวที่ XX" ให้ช่องที่ยังว่างอยู่
-  // โดยนับต่อเนื่องจากจำนวนวิชาเอกเลือกทั้งหมดที่ลงไปแล้วในสายนั้น
-  const totalPlacedCount = filledSlotUids.size + overflowItems.length;
-  const remainingSlots = majorElecSlots
-    .filter(slot => !filledSlotUids.has(slot.uid))
-    .sort((a, b) => termOrder(a.year, a.sem) - termOrder(b.year, b.sem));
-
-  let nextElectiveNumber = totalPlacedCount + 1;
-  remainingSlots.forEach(slot => {
-    slot.title = slot.isSplitChild
-      ? `วิชาเอกเลือกตัวที่ ${nextElectiveNumber} (คงเหลือ ${slot.credits} หน่วยกิต)`
-      : `วิชาเอกเลือกตัวที่ ${nextElectiveNumber}`;
-    if (fallbackNote) {
-      slot.trackNote = fallbackNote;
-    }
-    nextElectiveNumber++;
+  // ขั้นที่ 3: เรียงลำดับวิชาเอกเลือกทั้งหมดตามเวลาจริง (ปี -> เทอม -> วิชาที่ลงแล้วอยู่บน ช่องว่างอยู่ล่าง)
+  // แล้วรันเลข 1, 2, 3... ตามตำแหน่งจริง เพื่อให้ช่องที่ว่างแสดงเลขต่อเนื่องไม่กระโดด
+  const allMajorElectives = [
+    ...majorElecSlots,
+    ...overflowItems
+  ].sort((a, b) => {
+    const tDiff = termOrder(a.year, a.sem) - termOrder(b.year, b.sem);
+    if (tDiff !== 0) return tDiff;
+    const aEmpty = !filledSlotUids.has(a.uid) && !a.isTrackOverflow ? 1 : 0;
+    const bEmpty = !filledSlotUids.has(b.uid) && !b.isTrackOverflow ? 1 : 0;
+    return aEmpty - bEmpty;
   });
+
+  const remainingSlots = [];
+  allMajorElectives.forEach((slot, idx) => {
+    const isEmpty = !filledSlotUids.has(slot.uid) && !slot.isTrackOverflow;
+    if (isEmpty) {
+      const seqNum = idx + 1;
+      slot.title = slot.isSplitChild
+        ? `วิชาเอกเลือกตัวที่ ${seqNum} (คงเหลือ ${slot.credits} หน่วยกิต)`
+        : `วิชาเอกเลือกตัวที่ ${seqNum}`;
+      if (fallbackNote) {
+        slot.trackNote = fallbackNote;
+      }
+      remainingSlots.push(slot);
+    }
+  });
+
+  const totalPlacedCount = filledSlotUids.size + overflowItems.length;
 
   // เก็บรายการช่องที่อัปเดตและช่องที่งอกเพิ่มเพื่อให้เกิดเอฟเฟกต์กระพริบเน้นสี
   RECENTLY_UPDATED_UIDS = new Set([
@@ -888,7 +900,7 @@ function applySelectedTrack() {
     desc += ` (เพิ่มเกินแผน ${overflowItems.length} วิชา / +${overflowCredits} นก.)`;
   }
   if (remainingSlots.length > 0) {
-    desc += ` เหลือช่องว่าง ${remainingSlots.length} ช่อง (${remainingCredits} นก.) รันเลขต่อเนื่องให้แล้ว`;
+    desc += ` เหลือช่องว่าง ${remainingSlots.length} ช่อง (${remainingCredits} นก.) รันเลขตามลำดับเวลาให้แล้ว`;
   }
   if (overMinCredits > 0) {
     desc += `<br><span style="color:#fde68a;font-weight:600;">หมายเหตุ: วางแผนวิชาเอกเลือกเกินเกณฑ์ขั้นต่ำ +${overMinCredits} หน่วยกิต (กดปุ่มลบบนการ์ดที่เพิ่มเกินได้หากไม่ต้องการเรียนเกิน)</span>`;
