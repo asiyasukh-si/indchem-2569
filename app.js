@@ -148,6 +148,40 @@ function injectEffectStyles() {
       color: #b45309;
       border: 1px solid #fcd34d;
     }
+    .desc-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-top: 8px;
+    }
+    .desc-lang-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 1px 7px;
+      border-radius: 4px;
+      margin-bottom: 5px;
+    }
+    .desc-lang-th {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    .desc-lang-en {
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+    .desc-text {
+      font-size: 0.86rem;
+      color: #334155;
+      line-height: 1.55;
+      margin: 0;
+    }
+    .desc-divider {
+      border: none;
+      border-top: 1px dashed #cbd5e1;
+      margin: 10px 0;
+    }
     @media print {
       .toast-container, .active-track-banner .btn { display: none !important; }
     }
@@ -1131,6 +1165,9 @@ function openDrawer(courseId, uid) {
   }
 
   if (c) {
+    const descTh = (c.description_full_th || '').trim() || (c.description_summary_th || '').trim();
+    const descEn = (c.description_full_en || '').trim();
+
     body += `
       <div class="detail-block">
         <h4>ข้อมูลรายวิชา</h4>
@@ -1139,9 +1176,31 @@ function openDrawer(courseId, uid) {
           <strong>หมวดหมู่:</strong> ${c.course_category}<br>
           <strong>ภาคเรียนที่เปิดสอน:</strong> ${c.offered_terms || c.open_term_suggested || '-'}
         </p>
-        ${c.description_summary_th ? `<p style="font-size:0.88rem;color:#334155;margin-top:8px;">${c.description_summary_th}</p>` : ''}
       </div>
     `;
+
+    if (descTh || descEn) {
+      body += `
+        <div class="detail-block">
+          <h4>คำอธิบายลักษณะกระบวนวิชา (Course Description)</h4>
+          <div class="desc-box">
+            ${descTh ? `
+              <div>
+                <span class="desc-lang-badge desc-lang-th">ภาษาไทย</span>
+                <p class="desc-text">${descTh}</p>
+              </div>
+            ` : ''}
+            ${descTh && descEn ? '<hr class="desc-divider" />' : ''}
+            ${descEn ? `
+              <div>
+                <span class="desc-lang-badge desc-lang-en">English</span>
+                <p class="desc-text">${descEn}</p>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }
   } else if (item && item.placeholderRule) {
     body += `
       <div class="detail-block">
@@ -1294,7 +1353,10 @@ function renderPickerList() {
     list = list.filter(c =>
       c.course_id.toLowerCase().includes(q) ||
       c.title_th.toLowerCase().includes(q) ||
-      (c.title_en || '').toLowerCase().includes(q)
+      (c.title_en || '').toLowerCase().includes(q) ||
+      (c.description_full_th || '').toLowerCase().includes(q) ||
+      (c.description_full_en || '').toLowerCase().includes(q) ||
+      (c.description_summary_th || '').toLowerCase().includes(q)
     );
   }
 
