@@ -47,7 +47,7 @@ let RECENTLY_UPDATED_UIDS = new Set();
 let FLASH_TIMER = null;
 
 // =========================================================================
-// Helper: Normalization & Thai Display Formatters
+// Helper: Normalization, Ordering & Thai Display Formatters
 // =========================================================================
 function normalizeCourseId(id) {
   const s = String(id || '').trim();
@@ -58,6 +58,77 @@ function normalizeCourseId(id) {
 
 function isCommonOptionRow(trackRow) {
   return String(trackRow && trackRow.is_common_option).trim().toUpperCase() === 'TRUE';
+}
+
+function isEmptyPlaceholder(item) {
+  return !!(item && item.isPlaceholder && item.courseId === item.originalCourseId);
+}
+
+function sortTermItemsForDisplay(termItems) {
+  const result = [...termItems];
+  const majorElecPositions = [];
+  const majorElecItems = [];
+
+  result.forEach((item, idx) => {
+    if (getCategoryGroup(item.category) === 'MajorElec') {
+      majorElecPositions.push(idx);
+      majorElecItems.push({ item, origIdx: idx });
+    }
+  });
+
+  majorElecItems.sort((a, b) => {
+    const aFailed = a.item.status === 'failed' ? 1 : 0;
+    const bFailed = b.item.status === 'failed' ? 1 : 0;
+    if (aFailed !== bFailed) return aFailed - bFailed;
+
+    const aEmpty = isEmptyPlaceholder(a.item) ? 1 : 0;
+    const bEmpty = isEmptyPlaceholder(b.item) ? 1 : 0;
+    if (aEmpty !== bEmpty) return aEmpty - bEmpty;
+
+    const aSplit = a.item.isSplitChild ? 1 : 0;
+    const bSplit = b.item.isSplitChild ? 1 : 0;
+    if (aSplit !== bSplit) return aSplit - bSplit;
+
+    return a.origIdx - b.origIdx;
+  });
+
+  majorElecPositions.forEach((pos, i) => {
+    result[pos] = majorElecItems[i].item;
+  });
+
+  return result;
+}
+
+function getMajorElectiveSequenceMap() {
+  const seqMap = {};
+  const maxYear = Math.max(STATE.maxYear, ...STATE.items.map(i => i.year), 4);
+  let seq = 1;
+
+  for (let y = 1; y <= maxYear; y++) {
+    [1, 2, 3].forEach(s => {
+      const termItems = sortTermItemsForDisplay(
+        STATE.items.filter(i => i.year === y && i.sem === s)
+      );
+      termItems.forEach(item => {
+        if (item.status !== 'failed' && getCategoryGroup(item.category) === 'MajorElec') {
+          seqMap[item.uid] = seq++;
+        }
+      });
+    });
+  }
+
+  return seqMap;
+}
+
+function getDisplayTitleForItem(item, seqMap) {
+  if (!item) return '';
+  const seqNum = seqMap ? seqMap[item.uid] : null;
+  if (getCategoryGroup(item.category) === 'MajorElec' && isEmptyPlaceholder(item) && seqNum) {
+    return item.isSplitChild
+      ? `วิชาเอกเลือกตัวที่ ${seqNum} (คงเหลือ ${item.credits} หน่วยกิต)`
+      : `วิชาเอกเลือกตัวที่ ${seqNum}`;
+  }
+  return item.title;
 }
 
 function formatCategoryTh(cat) {
@@ -839,27 +910,12 @@ function applySelectedTrack() {
   // ขั้นที่ 2: เติมวิชาตัวเลือกร่วมของกลุ่มนั้น (is_common_option = TRUE) เฉพาะในช่องว่างที่เหลือ
   fillSlotsWithPool(commonTrackCourses, false);
 
-  // ขั้นที่ 3: เรียงลำดับวิชาเอกเลือกทั้งหมดตามเวลาจริง (ปี -> เทอม -> วิชาที่ลงแล้วอยู่บน ช่องว่างอยู่ล่าง)
-  // แล้วรันเลข 1, 2, 3... ตามตำแหน่งจริง เพื่อให้ช่องที่ว่างแสดงเลขต่อเนื่องไม่กระโดด
-  const allMajorElectives = [
-    ...majorElecSlots,
-    ...overflowItems
-  ].sort((a, b) => {
-    const tDiff = termOrder(a.year, a.sem) - termOrder(b.year, b.sem);
-    if (tDiff !== 0) return tDiff;
-    const aEmpty = !filledSlotUids.has(a.uid) && !a.isTrackOverflow ? 1 : 0;
-    const bEmpty = !filledSlotUids.has(b.uid) && !b.isTrackOverflow ? 1 : 0;
-    return aEmpty - bEmpty;
-  });
-
+  // ขั้นที่ 3: รันเลขลำดับต่อเนื่องตามเวลาจริงและการเรียงลำดับแสดงผล (วิชาที่ลงแล้วอยู่บน ช่องว่างอยู่ล่าง)
+  const seqMap = getMajorElectiveSequenceMap();
   const remainingSlots = [];
-  allMajorElectives.forEach((slot, idx) => {
-    const isEmpty = !filledSlotUids.has(slot.uid) && !slot.isTrackOverflow;
-    if (isEmpty) {
-      const seqNum = idx + 1;
-      slot.title = slot.isSplitChild
-        ? `วิชาเอกเลือกตัวที่ ${seqNum} (คงเหลือ ${slot.credits} หน่วยกิต)`
-        : `วิชาเอกเลือกตัวที่ ${seqNum}`;
+  majorElecSlots.forEach(slot => {
+    if (isEmptyPlaceholder(slot)) {
+      slot.title = getDisplayTitleForItem(slot, seqMap);
       if (fallbackNote) {
         slot.trackNote = fallbackNote;
       }
@@ -1103,6 +1159,7 @@ function getHighlightRole(courseId) {
 function renderRoadmap() {
   const container = document.getElementById('roadmapContainer');
   const maxYear = Math.max(STATE.maxYear, ...STATE.items.map(i => i.year), 4);
+  const majorElecSeqMap = getMajorElectiveSequenceMap();
   let html = '';
 
   if (STATE.selectedTrack && DB.trackNames[STATE.selectedTrack]) {
@@ -1131,7 +1188,9 @@ function renderRoadmap() {
     html += `<div class="semesters-grid">`;
 
     sems.forEach(s => {
-      const termItems = STATE.items.filter(i => i.year === y && i.sem === s);
+      const termItems = sortTermItemsForDisplay(
+        STATE.items.filter(i => i.year === y && i.sem === s)
+      );
       const termCredits = termItems.filter(i => i.status !== 'failed').reduce((sum, i) => sum + i.credits, 0);
       const creditLimit = s === 3 ? 9 : 22;
       const isOver = termCredits > creditLimit;
@@ -1154,6 +1213,8 @@ function renderRoadmap() {
           const warnings = validateItem(item);
           const hlClass = hlRole ? `hl-${hlRole}` : '';
           const flashClass = RECENTLY_UPDATED_UIDS.has(item.uid) ? 'just-updated' : '';
+          const seqNum = majorElecSeqMap[item.uid];
+          const displayTitle = getDisplayTitleForItem(item, majorElecSeqMap);
 
           let hlBadge = '';
           if (hlRole === 'prereq') hlBadge = '<span class="tag tag-hl-prereq">ตัวลงก่อน</span>';
@@ -1163,10 +1224,11 @@ function renderRoadmap() {
           const phClass = item.isPlaceholder ? 'is-placeholder' : '';
           let elecBadge = '';
           if (item.isTrackOverflow) {
-            elecBadge = '<span class="tag tag-overflow">วิชาเอกเลือก (เพิ่มตามสาย)</span>';
+            elecBadge = `<span class="tag tag-overflow">วิชาเอกเลือก${seqNum ? `ตัวที่ ${seqNum}` : ''} (เพิ่มตามสาย)</span>`;
+          } else if (catGroup === 'MajorElec') {
+            elecBadge = `<span class="tag tag-elec-major">วิชาเอกเลือก${seqNum ? `ตัวที่ ${seqNum}` : ''}</span>`;
           } else if (item.isPlaceholder) {
             if (catGroup === 'GE') elecBadge = '<span class="tag tag-elec-ge">เลือกศึกษาทั่วไป (GE)</span>';
-            else if (catGroup === 'MajorElec') elecBadge = '<span class="tag tag-elec-major">วิชาเอกเลือก</span>';
             else if (catGroup === 'Free') elecBadge = '<span class="tag tag-elec-free">วิชาเลือกเสรี</span>';
             else elecBadge = '<span class="tag tag-elec">ช่องวิชาเลือก</span>';
           } else if (catGroup === 'Minor') {
@@ -1184,7 +1246,7 @@ function renderRoadmap() {
                     ${hlBadge}
                     ${elecBadge}
                   </div>
-                  <div class="card-title">${item.title}</div>
+                  <div class="card-title">${displayTitle}</div>
                   ${DB.courseMap[item.courseId]?.title_en ? `<div class="card-title-en">(${DB.courseMap[item.courseId].title_en})</div>` : ''}
                   ${item.trackNote ? `<div style="font-size:0.78rem;color:#0f766e;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;padding:6px 8px;margin-top:6px;line-height:1.4;"><strong>คำแนะนำกลุ่ม:</strong> ${item.trackNote}</div>` : ''}
                 </div>
@@ -1273,8 +1335,9 @@ function clearSelection() {
 function openDrawer(courseId, uid) {
   const item = STATE.items.find(i => i.uid === uid);
   const c = DB.courseMap[courseId];
+  const seqMap = getMajorElectiveSequenceMap();
   document.getElementById('drawerCode').textContent = courseId;
-  document.getElementById('drawerTitle').textContent = c ? c.title_th : (item ? item.title : courseId);
+  document.getElementById('drawerTitle').textContent = c ? c.title_th : (item ? getDisplayTitleForItem(item, seqMap) : courseId);
   document.getElementById('drawerTitleEn').textContent = c ? c.title_en : '';
 
   const warnings = item ? validateItem(item) : [];
@@ -1425,8 +1488,10 @@ function jumpToCourse(courseId) {
 function openPickerForSlot(uid) {
   const slot = STATE.items.find(i => i.uid === uid);
   if (!slot) return;
+  const seqMap = getMajorElectiveSequenceMap();
+  const displayTitle = getDisplayTitleForItem(slot, seqMap);
   PICKER_CTX = { mode: 'replace', uid, year: slot.year, sem: slot.sem, category: slot.category };
-  document.getElementById('pickerTitle').textContent = `เลือกวิชาสำหรับช่อง: ${slot.title} (${slot.credits} หน่วยกิต)`;
+  document.getElementById('pickerTitle').textContent = `เลือกวิชาสำหรับช่อง: ${displayTitle} (${slot.credits} หน่วยกิต)`;
   setupPickerFilters(slot.category === 'Major_Elective');
   document.getElementById('customAddBox').style.display = 'none';
   document.getElementById('pickerModal').classList.add('open');
@@ -1648,7 +1713,8 @@ function openMoveModal(uid) {
   const item = STATE.items.find(i => i.uid === uid);
   if (!item) return;
   MOVE_UID = uid;
-  document.getElementById('moveCourseLabel').textContent = `${item.courseId} — ${item.title}`;
+  const seqMap = getMajorElectiveSequenceMap();
+  document.getElementById('moveCourseLabel').textContent = `${item.courseId} — ${getDisplayTitleForItem(item, seqMap)}`;
   const ySel = document.getElementById('moveYearSelect');
   const maxY = Math.max(STATE.maxYear, 6);
   ySel.innerHTML = '';
