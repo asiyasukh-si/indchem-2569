@@ -1099,32 +1099,23 @@ function renderSummary() {
     { title: 'วิชาเลือกเสรี', data: free, target: getRuleMin('FREE_ELEC', 6) }
   ];
 
-  const hasEmptyMajorElec = activeItems.some(i => getCategoryGroup(i.category) === 'MajorElec' && isEmptyPlaceholder(i));
-
   const grid = document.getElementById('summaryGrid');
   let html = cards.map(c => {
     const pct = Math.min(100, Math.round((c.data.passed / c.target) * 100));
     const isDone = c.data.passed >= c.target;
-    const extraPassed = c.data.passed - c.target;
-    const extraPlanned = c.data.planned - c.target;
     const missingPlanned = c.target - c.data.planned;
-    const isShort = !isDone && missingPlanned > 0;
+    const isShort = missingPlanned > 0;
 
-    let statusText = `ในแผน ${c.data.planned}`;
+    let statusText = '';
     let cardClass = 'stat-card';
     let fillClass = isDone ? 'done' : '';
 
-    if (isDone) {
-      statusText = extraPassed > 0
-        ? `<span style="color:var(--success);font-weight:600;">ผ่านเกิน +${extraPassed} นก.</span>`
-        : `<span style="color:var(--success);font-weight:600;">ครบเกณฑ์</span>`;
-    } else if (isShort) {
-      const pendingHint = (c.isLevelRule && hasEmptyMajorElec) ? ' (รอเลือกวิชาเอกเลือก)' : '';
-      statusText = `<span style="color:var(--danger);font-weight:700;">ในแผน ${c.data.planned} (ขาดอีก ${missingPlanned} นก.)${pendingHint}</span>`;
+    if (isShort) {
+      statusText = `<span style="color:var(--danger);font-weight:700;">จัดลงตาราง ${c.data.planned} นก. (ขาดอีก ${missingPlanned} นก.)</span>`;
       cardClass += ' stat-short';
       fillClass = 'short';
-    } else if (extraPlanned > 0) {
-      statusText = `<span style="color:#b45309;font-weight:600;">ในแผน ${c.data.planned} (เกินขั้นต่ำ +${extraPlanned})</span>`;
+    } else {
+      statusText = `<span style="color:var(--success);font-weight:600;">จัดลงตาราง ${c.data.planned} นก. (ครบเกณฑ์)</span>`;
     }
 
     return `
@@ -1147,7 +1138,7 @@ function renderSummary() {
         <div class="stat-title" style="color:#7e22ce;">วิชาโท / เรียนเพิ่มนอกแผน</div>
         <div class="stat-value" style="color:#7e22ce;">
           <span>${minor.passed} <span style="font-size:0.78rem;font-weight:500;">นก.</span></span>
-          <span class="stat-sub">ลงไว้ ${minor.planned} นก.</span>
+          <span class="stat-sub">จัดลงตาราง ${minor.planned} นก.</span>
         </div>
         <div class="progress-track">
           <div class="progress-fill" style="width:${minor.planned ? Math.round((minor.passed / minor.planned) * 100) : 0}%;background:#9333ea;"></div>
