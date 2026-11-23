@@ -178,7 +178,7 @@ select.styled-select {
 /* Credit Summary Bar */
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -187,10 +187,18 @@ select.styled-select {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 10px 14px;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+.stat-card.stat-short {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+.stat-card.stat-short .stat-title {
+  color: #991b1b;
 }
 .stat-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
-.stat-value { font-size: 1.15rem; font-weight: 700; margin: 2px 0 6px; display: flex; justify-content: space-between; align-items: baseline; }
-.stat-sub { font-size: 0.78rem; font-weight: 500; color: var(--muted); }
+.stat-value { font-size: 1.12rem; font-weight: 700; margin: 2px 0 6px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px; }
+.stat-sub { font-size: 0.77rem; font-weight: 500; color: var(--muted); }
 .progress-track {
   height: 6px;
   background: #e2e8f0;
@@ -204,6 +212,7 @@ select.styled-select {
   transition: width 0.25s ease;
 }
 .progress-fill.done { background: var(--success); }
+.progress-fill.short { background: var(--danger); }
 
 /* Highlight Legend */
 .legend-bar {

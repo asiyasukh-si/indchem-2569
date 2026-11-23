@@ -1061,26 +1061,45 @@ function renderSummary() {
     planned: activeItems.filter(fn).reduce((s, i) => s + i.credits, 0)
   });
 
+  const isCoop = STATE.planType === 'Coop';
+  const majorReqRuleId = isCoop ? 'MAJOR_REQ_COOP' : 'MAJOR_REQ_REG';
+  const majorReqFallback = isCoop ? 61 : 58;
+  const majorElecRuleId = isCoop ? 'MAJOR_ELEC_COOP' : 'MAJOR_ELEC_REG';
+  const majorElecFallback = isCoop ? 15 : 18;
+
   const total = calc(() => true);
   const ge = calc(i => getCategoryGroup(i.category) === 'GE');
   const core = calc(i => getCategoryGroup(i.category) === 'Core');
   const majorAll = calc(i => ['MajorReq', 'MajorElec'].includes(getCategoryGroup(i.category)));
+  const majorReq = calc(i => getCategoryGroup(i.category) === 'MajorReq');
+  const majorElec = calc(i => getCategoryGroup(i.category) === 'MajorElec');
   const major300 = calc(i => {
     if (!['MajorReq', 'MajorElec'].includes(getCategoryGroup(i.category))) return false;
     const m = String(i.courseId).match(/^\d{3}(\d)/);
     return m && Number(m[1]) >= 3;
   });
+  const major400 = calc(i => {
+    if (!['MajorReq', 'MajorElec'].includes(getCategoryGroup(i.category))) return false;
+    const m = String(i.courseId).match(/^\d{3}(\d)/);
+    return m && Number(m[1]) >= 4;
+  });
   const free = calc(i => getCategoryGroup(i.category) === 'Free');
   const minor = calc(i => getCategoryGroup(i.category) === 'Minor');
 
+  const planSuffix = isCoop ? 'สหกิจฯ' : 'แผนปกติ';
   const cards = [
     { title: 'หน่วยกิตรวมตลอดหลักสูตร', data: total, target: getRuleMin('TOTAL_CREDITS', 135) },
     { title: 'หมวดวิชาศึกษาทั่วไป (GE)', data: ge, target: getRuleMin('GE_TOTAL', 24) },
     { title: 'วิชาแกนวิทยาศาสตร์', data: core, target: getRuleMin('CORE_TOTAL', 29) },
-    { title: 'วิชาเอก (บังคับ + เลือก)', data: majorAll, target: getRuleMin('MAJOR_TOTAL', 76) },
-    { title: 'วิชาเอกระดับ 300 ขึ้นไป', data: major300, target: getRuleMin('MAJOR_LVL300_PLUS', 36) },
+    { title: 'วิชาเอกรวม (บังคับ + เลือก)', data: majorAll, target: getRuleMin('MAJOR_TOTAL', 76) },
+    { title: `วิชาเอกบังคับ (${planSuffix})`, data: majorReq, target: getRuleMin(majorReqRuleId, majorReqFallback) },
+    { title: `วิชาเอกเลือก (${planSuffix})`, data: majorElec, target: getRuleMin(majorElecRuleId, majorElecFallback) },
+    { title: 'วิชาเอกระดับ 300 ขึ้นไป', data: major300, target: getRuleMin('MAJOR_LVL300_PLUS', 36), isLevelRule: true },
+    { title: 'วิชาเอกระดับ 400', data: major400, target: getRuleMin('MAJOR_LVL400', 18), isLevelRule: true },
     { title: 'วิชาเลือกเสรี', data: free, target: getRuleMin('FREE_ELEC', 6) }
   ];
+
+  const hasEmptyMajorElec = activeItems.some(i => getCategoryGroup(i.category) === 'MajorElec' && isEmptyPlaceholder(i));
 
   const grid = document.getElementById('summaryGrid');
   let html = cards.map(c => {
@@ -1088,25 +1107,35 @@ function renderSummary() {
     const isDone = c.data.passed >= c.target;
     const extraPassed = c.data.passed - c.target;
     const extraPlanned = c.data.planned - c.target;
+    const missingPlanned = c.target - c.data.planned;
+    const isShort = !isDone && missingPlanned > 0;
 
     let statusText = `ในแผน ${c.data.planned}`;
+    let cardClass = 'stat-card';
+    let fillClass = isDone ? 'done' : '';
+
     if (isDone) {
       statusText = extraPassed > 0
         ? `<span style="color:var(--success);font-weight:600;">ผ่านเกิน +${extraPassed} นก.</span>`
         : `<span style="color:var(--success);font-weight:600;">ครบเกณฑ์</span>`;
+    } else if (isShort) {
+      const pendingHint = (c.isLevelRule && hasEmptyMajorElec) ? ' (รอเลือกวิชาเอกเลือก)' : '';
+      statusText = `<span style="color:var(--danger);font-weight:700;">ในแผน ${c.data.planned} (ขาดอีก ${missingPlanned} นก.)${pendingHint}</span>`;
+      cardClass += ' stat-short';
+      fillClass = 'short';
     } else if (extraPlanned > 0) {
       statusText = `<span style="color:#b45309;font-weight:600;">ในแผน ${c.data.planned} (เกินขั้นต่ำ +${extraPlanned})</span>`;
     }
 
     return `
-      <div class="stat-card">
+      <div class="${cardClass}">
         <div class="stat-title">${c.title}</div>
         <div class="stat-value">
           <span>${c.data.passed} / ${c.target} <span style="font-size:0.78rem;font-weight:500;">นก.</span></span>
           <span class="stat-sub">${statusText}</span>
         </div>
         <div class="progress-track">
-          <div class="progress-fill ${isDone ? 'done' : ''}" style="width:${pct}%"></div>
+          <div class="progress-fill ${fillClass}" style="width:${pct}%"></div>
         </div>
       </div>
     `;
