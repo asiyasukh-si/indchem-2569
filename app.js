@@ -56,6 +56,26 @@ function normalizeCourseId(id) {
   return s;
 }
 
+function escapeHtml(str) {
+  return String(str !== undefined && str !== null ? str : '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function escapeJsStr(str) {
+  return escapeHtml(
+    String(str !== undefined && str !== null ? str : '')
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/"/g, '\\"')
+      .replace(/\r/g, '\\r')
+      .replace(/\n/g, '\\n')
+  );
+}
+
 function isCommonOptionRow(trackRow) {
   return String(trackRow && trackRow.is_common_option).trim().toUpperCase() === 'TRUE';
 }
@@ -328,33 +348,6 @@ function injectEffectStyles() {
   document.head.appendChild(style);
 }
 
-function hideLegacyLegendBar() {
-  const stopTags = new Set(['BODY', 'HTML', 'MAIN', 'HEADER', 'FOOTER']);
-  const stopIds = new Set(['appRoot', 'roadmapContainer', 'summaryGrid']);
-
-  const selBar = document.getElementById('selectionStatus');
-  if (selBar) {
-    let target = selBar;
-    let cur = selBar.parentElement;
-    while (cur && !stopTags.has(cur.tagName) && !stopIds.has(cur.id)) {
-      if (cur.querySelector('#roadmapContainer') || cur.querySelector('#summaryGrid')) break;
-      target = cur;
-      if (cur.textContent && cur.textContent.includes('สัญลักษณ์สายโซ่วิชา')) break;
-      cur = cur.parentElement;
-    }
-    target.style.display = 'none';
-  }
-
-  const root = document.getElementById('appRoot') || document.body;
-  root.querySelectorAll('div, section').forEach(el => {
-    if (stopIds.has(el.id)) return;
-    if (el.querySelector('#roadmapContainer') || el.querySelector('#summaryGrid')) return;
-    if (el.textContent && el.textContent.includes('สัญลักษณ์สายโซ่วิชา')) {
-      el.style.display = 'none';
-    }
-  });
-}
-
 function showToast(title, description, duration = 4800) {
   let container = document.getElementById('toastContainer');
   if (!container) {
@@ -459,7 +452,6 @@ async function fetchSheet(sheetName) {
 
 async function initApp() {
   injectEffectStyles();
-  hideLegacyLegendBar();
   const loadingBox = document.getElementById('loadingBox');
   if (!SPREADSHEET_ID || SPREADSHEET_ID === 'PUT_YOUR_GOOGLE_SHEET_ID_HERE') {
     loadingBox.classList.add('error');
@@ -546,11 +538,10 @@ async function initApp() {
 
     loadingBox.style.display = 'none';
     document.getElementById('appRoot').style.display = 'block';
-    hideLegacyLegendBar();
     renderAll();
   } catch (err) {
     loadingBox.classList.add('error');
-    loadingBox.innerHTML = `<strong>เกิดข้อผิดพลาดในการโหลดข้อมูลจาก Google Sheets</strong><br>${err.message}<br><small>กรุณาตรวจสอบว่าเปิดสิทธิ์แชร์ไฟล์เป็น Anyone with the link (Viewer) แล้ว</small>`;
+    loadingBox.innerHTML = `<strong>เกิดข้อผิดพลาดในการโหลดข้อมูลจาก Google Sheets</strong><br>${escapeHtml(err.message)}<br><small>กรุณาตรวจสอบว่าเปิดสิทธิ์แชร์ไฟล์เป็น Anyone with the link (Viewer) แล้ว</small>`;
   }
 }
 
@@ -558,7 +549,7 @@ function populateTrackDropdown() {
   const sel = document.getElementById('trackSelect');
   sel.innerHTML = '<option value="">-- เลือกสายความเชี่ยวชาญ --</option>';
   Object.entries(DB.trackNames).forEach(([id, name]) => {
-    sel.innerHTML += `<option value="${id}">${name}</option>`;
+    sel.innerHTML += `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`;
   });
 }
 
@@ -948,7 +939,7 @@ function applySelectedTrack() {
     .reduce((sum, i) => sum + i.credits, 0);
   const overMinCredits = Math.max(0, plannedMajorElecCredits - baseMajorElecCredits);
 
-  let desc = `จัดวางวิชาสาย ${trackName} ลงตารางปี 3–4 จำนวน ${totalPlacedCount} วิชาเรียบร้อยแล้ว`;
+  let desc = `จัดวางวิชาสาย ${escapeHtml(trackName)} ลงตารางปี 3–4 จำนวน ${totalPlacedCount} วิชาเรียบร้อยแล้ว`;
   if (carriedOverCount > 0) {
     desc += ` (ทดแทนไปยังเทอมถัดไป ${carriedOverCount} วิชา)`;
   }
@@ -1165,7 +1156,7 @@ function renderRoadmap() {
   if (STATE.selectedTrack && DB.trackNames[STATE.selectedTrack]) {
     html += `
       <div class="active-track-banner">
-        <div>กำลังแสดงแผนตามสายความเชี่ยวชาญ: <strong>${DB.trackNames[STATE.selectedTrack]}</strong></div>
+        <div>กำลังแสดงแผนตามสายความเชี่ยวชาญ: <strong>${escapeHtml(DB.trackNames[STATE.selectedTrack])}</strong></div>
         <button class="btn btn-sm" onclick="scrollToYear(3)">ไปที่วิชาเอกเลือก (ปี 3–4)</button>
       </div>
     `;
@@ -1238,26 +1229,26 @@ function renderRoadmap() {
           }
 
           html += `
-            <div class="course-card cat-${catGroup} status-${item.status} ${phClass} ${hlClass} ${flashClass}" onclick="selectCourse('${item.courseId}', '${item.uid}')">
+            <div class="course-card cat-${escapeHtml(catGroup)} status-${escapeHtml(item.status)} ${phClass} ${hlClass} ${flashClass}" onclick="selectCourse('${escapeJsStr(item.courseId)}', '${escapeJsStr(item.uid)}')">
               <div class="card-top">
                 <div>
                   <div class="card-id">
-                    <span>${item.courseId}</span>
+                    <span>${escapeHtml(item.courseId)}</span>
                     ${hlBadge}
                     ${elecBadge}
                   </div>
-                  <div class="card-title">${displayTitle}</div>
-                  ${DB.courseMap[item.courseId]?.title_en ? `<div class="card-title-en">(${DB.courseMap[item.courseId].title_en})</div>` : ''}
-                  ${item.trackNote ? `<div style="font-size:0.78rem;color:#0f766e;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;padding:6px 8px;margin-top:6px;line-height:1.4;"><strong>คำแนะนำกลุ่ม:</strong> ${item.trackNote}</div>` : ''}
+                  <div class="card-title">${escapeHtml(displayTitle)}</div>
+                  ${DB.courseMap[item.courseId]?.title_en ? `<div class="card-title-en">(${escapeHtml(DB.courseMap[item.courseId].title_en)})</div>` : ''}
+                  ${item.trackNote ? `<div style="font-size:0.78rem;color:#0f766e;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;padding:6px 8px;margin-top:6px;line-height:1.4;"><strong>คำแนะนำกลุ่ม:</strong> ${escapeHtml(item.trackNote)}</div>` : ''}
                 </div>
                 <div onclick="event.stopPropagation()">
                   ${!STATE.flexibleMode ? `
                     <label class="pass-checkbox" title="ติ๊กเมื่อสอบผ่านวิชานี้แล้ว">
-                      <input type="checkbox" ${item.status === 'passed' ? 'checked' : ''} onchange="togglePass('${item.uid}', this.checked)" />
+                      <input type="checkbox" ${item.status === 'passed' ? 'checked' : ''} onchange="togglePass('${escapeJsStr(item.uid)}', this.checked)" />
                       <span>ผ่าน</span>
                     </label>
                   ` : `
-                    <select class="btn btn-sm" onchange="changeStatus('${item.uid}', this.value)">
+                    <select class="btn btn-sm" onchange="changeStatus('${escapeJsStr(item.uid)}', this.value)">
                       <option value="planned" ${item.status === 'planned' ? 'selected' : ''}>วางแผนไว้</option>
                       <option value="enrolled" ${item.status === 'enrolled' ? 'selected' : ''}>กำลังเรียน</option>
                       <option value="passed" ${item.status === 'passed' ? 'selected' : ''}>ผ่านแล้ว</option>
@@ -1267,17 +1258,17 @@ function renderRoadmap() {
                 </div>
               </div>
               <div class="card-meta">
-                <span>${item.credits} หน่วยกิต</span>
-                ${warnings.length > 0 ? `<span class="tag tag-warn" title="${warnings.join(' | ')}">แจ้งเตือนเงื่อนไข (${warnings.length})</span>` : ''}
+                <span>${escapeHtml(item.credits)} หน่วยกิต</span>
+                ${warnings.length > 0 ? `<span class="tag tag-warn" title="${escapeHtml(warnings.join(' | '))}">แจ้งเตือนเงื่อนไข (${warnings.length})</span>` : ''}
               </div>
               ${(item.isPlaceholder || item.isExtra || item.isTrackOverflow || STATE.flexibleMode) ? `
                 <div class="card-actions" onclick="event.stopPropagation()">
                   ${(item.isPlaceholder || item.isTrackOverflow) ? (catGroup === 'Free'
-                    ? `<button class="btn btn-sm" onclick="editFreeElective('${item.uid}')">ระบุชื่อวิชาเอง (ไม่บังคับ)</button>`
-                    : `<button class="btn btn-sm" onclick="openPickerForSlot('${item.uid}')">เลือก/เปลี่ยนวิชา</button>`) : ''}
-                  ${STATE.flexibleMode ? `<button class="btn btn-sm" onclick="openMoveModal('${item.uid}')">ย้ายเทอม</button>` : ''}
-                  ${STATE.flexibleMode && item.status === 'failed' ? `<button class="btn btn-sm btn-accent" onclick="retakeCourse('${item.uid}')">+ ลงเรียนซ้ำ</button>` : ''}
-                  ${(STATE.flexibleMode || item.isExtra || item.isTrackOverflow) ? `<button class="btn btn-sm btn-danger-outline" onclick="removeItem('${item.uid}')">ลบ</button>` : ''}
+                    ? `<button class="btn btn-sm" onclick="editFreeElective('${escapeJsStr(item.uid)}')">ระบุชื่อวิชาเอง (ไม่บังคับ)</button>`
+                    : `<button class="btn btn-sm" onclick="openPickerForSlot('${escapeJsStr(item.uid)}')">เลือก/เปลี่ยนวิชา</button>`) : ''}
+                  ${STATE.flexibleMode ? `<button class="btn btn-sm" onclick="openMoveModal('${escapeJsStr(item.uid)}')">ย้ายเทอม</button>` : ''}
+                  ${STATE.flexibleMode && item.status === 'failed' ? `<button class="btn btn-sm btn-accent" onclick="retakeCourse('${escapeJsStr(item.uid)}')">+ ลงเรียนซ้ำ</button>` : ''}
+                  ${(STATE.flexibleMode || item.isExtra || item.isTrackOverflow) ? `<button class="btn btn-sm btn-danger-outline" onclick="removeItem('${escapeJsStr(item.uid)}')">ลบ</button>` : ''}
                 </div>
               ` : ''}
             </div>
@@ -1352,7 +1343,7 @@ function openDrawer(courseId, uid) {
       <div class="detail-block" style="background:#fef2f2;border:1px solid #fecaca;padding:10px;border-radius:8px;color:#991b1b;">
         <strong style="display:block;margin-bottom:4px;">ข้อควรระวังในการลงทะเบียน:</strong>
         <ul style="padding-left:18px;font-size:0.86rem;">
-          ${warnings.map(w => `<li>${w}</li>`).join('')}
+          ${warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}
         </ul>
       </div>
     `;
@@ -1362,7 +1353,7 @@ function openDrawer(courseId, uid) {
     body += `
       <div class="detail-block" style="background:#ecfdf5;border:1px solid #a7f3d0;padding:10px;border-radius:8px;color:#065f46;">
         <h4 style="color:#065f46;margin-bottom:4px;">คำแนะนำจากอาจารย์ประจำกลุ่ม</h4>
-        <p style="font-size:0.88rem;line-height:1.45;">${item.trackNote}</p>
+        <p style="font-size:0.88rem;line-height:1.45;">${escapeHtml(item.trackNote)}</p>
       </div>
     `;
   }
@@ -1376,9 +1367,9 @@ function openDrawer(courseId, uid) {
       <div class="detail-block">
         <h4>ข้อมูลรายวิชา</h4>
         <p style="font-size:0.9rem;">
-          <strong>หน่วยกิต:</strong> ${c.credits} (${c.lecture_hours || 0}-${c.lab_hours || 0}-${c.self_study_hours || 0})<br>
-          <strong>หมวดวิชา:</strong> ${formatCategoryTh(c.course_category)}<br>
-          <strong>ภาคเรียนที่เปิดสอน:</strong> ${offeredLabel}
+          <strong>หน่วยกิต:</strong> ${escapeHtml(c.credits)} (${escapeHtml(c.lecture_hours || 0)}-${escapeHtml(c.lab_hours || 0)}-${escapeHtml(c.self_study_hours || 0)})<br>
+          <strong>หมวดวิชา:</strong> ${escapeHtml(formatCategoryTh(c.course_category))}<br>
+          <strong>ภาคเรียนที่เปิดสอน:</strong> ${escapeHtml(offeredLabel)}
         </p>
       </div>
     `;
@@ -1391,14 +1382,14 @@ function openDrawer(courseId, uid) {
             ${descTh ? `
               <div>
                 <span class="desc-lang-badge desc-lang-th">ภาษาไทย</span>
-                <p class="desc-text">${descTh}</p>
+                <p class="desc-text">${escapeHtml(descTh)}</p>
               </div>
             ` : ''}
             ${descTh && descEn ? '<hr class="desc-divider" />' : ''}
             ${descEn ? `
               <div>
                 <span class="desc-lang-badge desc-lang-en">English</span>
-                <p class="desc-text">${descEn}</p>
+                <p class="desc-text">${escapeHtml(descEn)}</p>
               </div>
             ` : ''}
           </div>
@@ -1409,7 +1400,7 @@ function openDrawer(courseId, uid) {
     body += `
       <div class="detail-block">
         <h4>เงื่อนไขช่องวิชาเลือก</h4>
-        <p style="font-size:0.9rem;">${item.placeholderRule}</p>
+        <p style="font-size:0.9rem;">${escapeHtml(item.placeholderRule)}</p>
       </div>
     `;
   }
@@ -1429,9 +1420,9 @@ function openDrawer(courseId, uid) {
           : cd.condition_course_id);
 
       body += `
-        <div class="rel-chip ${isCourseRef ? '' : 'non-clickable'}" ${isCourseRef ? `onclick="jumpToCourse('${cd.condition_course_id}')"` : ''}>
-          <strong>[${typeLabel}]</strong> ${mainLabel}
-          ${(isCourseRef && cd.condition_note_th) ? `<div style="font-size:0.76rem;color:var(--muted);">${cd.condition_note_th}</div>` : ''}
+        <div class="rel-chip ${isCourseRef ? '' : 'non-clickable'}" ${isCourseRef ? `onclick="jumpToCourse('${escapeJsStr(cd.condition_course_id)}')"` : ''}>
+          <strong>[${escapeHtml(typeLabel)}]</strong> ${escapeHtml(mainLabel)}
+          ${(isCourseRef && cd.condition_note_th) ? `<div style="font-size:0.76rem;color:var(--muted);">${escapeHtml(cd.condition_note_th)}</div>` : ''}
         </div>
       `;
     });
@@ -1444,7 +1435,7 @@ function openDrawer(courseId, uid) {
   } else {
     unlocks.forEach(uId => {
       const ref = DB.courseMap[uId];
-      body += `<span class="rel-chip" onclick="jumpToCourse('${uId}')">${uId} ${ref ? ref.title_th : ''}</span>`;
+      body += `<span class="rel-chip" onclick="jumpToCourse('${escapeJsStr(uId)}')">${escapeHtml(uId)} ${escapeHtml(ref ? ref.title_th : '')}</span>`;
     });
   }
   body += `</div>`;
@@ -1454,7 +1445,7 @@ function openDrawer(courseId, uid) {
     clos.forEach(cl => {
       body += `
         <div style="font-size:0.84rem;margin-bottom:6px;padding:6px 8px;background:#f8fafc;border-radius:6px;">
-          <strong>${cl.clo_code} (${cl.mapped_plo_id})</strong>: ${cl.clo_description_th}
+          <strong>${escapeHtml(cl.clo_code)} (${escapeHtml(cl.mapped_plo_id)})</strong>: ${escapeHtml(cl.clo_description_th)}
         </div>
       `;
     });
@@ -1516,7 +1507,7 @@ function setupPickerFilters(showTracks) {
     if (trackEntries.length > 0) {
       opts += '<optgroup label="กลุ่มความเชี่ยวชาญเฉพาะทาง">';
       trackEntries.forEach(([id, name]) => {
-        opts += `<option value="${id}">${name}</option>`;
+        opts += `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`;
       });
       opts += '</optgroup>';
     }
@@ -1604,8 +1595,8 @@ function renderPickerList() {
     if (courseTracks.length > 0) {
       groupBadge = courseTracks.map(t =>
         t.isCommon
-          ? `<span class="tag tag-elec-free">${t.trackName} (ตัวเลือกร่วม)</span>`
-          : `<span class="tag tag-elec-major">${t.trackName}</span>`
+          ? `<span class="tag tag-elec-free">${escapeHtml(t.trackName)} (ตัวเลือกร่วม)</span>`
+          : `<span class="tag tag-elec-major">${escapeHtml(t.trackName)}</span>`
       ).join(' ');
     } else if (c.course_id.startsWith('209')) {
       groupBadge = '<span class="tag tag-elec-ge">209 ทั่วไป</span>';
@@ -1617,13 +1608,13 @@ function renderPickerList() {
       <div class="picker-item">
         <div>
           <div style="font-weight:700;font-size:0.9rem;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
-            <span>${c.course_id} — ${c.title_th}</span>
+            <span>${escapeHtml(c.course_id)} — ${escapeHtml(c.title_th)}</span>
             ${groupBadge}
             ${termWarn}
           </div>
-          <div style="font-size:0.8rem;color:var(--muted);">${c.credits} หน่วยกิต | หมวด: ${formatCategoryTh(c.course_category)}</div>
+          <div style="font-size:0.8rem;color:var(--muted);">${escapeHtml(c.credits)} หน่วยกิต | หมวด: ${escapeHtml(formatCategoryTh(c.course_category))}</div>
         </div>
-        <button class="btn btn-sm ${alreadyIn ? '' : 'btn-primary'}" ${alreadyIn ? 'disabled' : ''} onclick="pickCourse('${c.course_id}')">
+        <button class="btn btn-sm ${alreadyIn ? '' : 'btn-primary'}" ${alreadyIn ? 'disabled' : ''} onclick="pickCourse('${escapeJsStr(c.course_id)}')">
           ${alreadyIn ? 'อยู่ในแผนแล้ว' : 'เลือกวิชานี้'}
         </button>
       </div>
