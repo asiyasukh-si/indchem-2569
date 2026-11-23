@@ -224,12 +224,12 @@ function injectEffectStyles() {
     }
     .toast-msg {
       pointer-events: auto;
-      background: #0f172a;
-      color: #f8fafc;
-      border-left: 5px solid #10b981;
+      background: #3b0764;
+      color: #faf5ff;
+      border-left: 5px solid #facc15;
       border-radius: 10px;
       padding: 12px 14px;
-      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.25);
+      box-shadow: 0 10px 25px rgba(59, 7, 100, 0.25);
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
@@ -245,17 +245,17 @@ function injectEffectStyles() {
       font-weight: 700;
       font-size: 0.92rem;
       margin-bottom: 3px;
-      color: #6ee7b7;
+      color: #fde047;
     }
     .toast-desc {
       font-size: 0.84rem;
       line-height: 1.45;
-      color: #e2e8f0;
+      color: #f3e8ff;
     }
     .toast-close {
       background: transparent;
       border: none;
-      color: #94a3b8;
+      color: #d8b4fe;
       font-size: 1.15rem;
       line-height: 1;
       cursor: pointer;
@@ -269,9 +269,9 @@ function injectEffectStyles() {
       to { opacity: 1; transform: translateY(0); }
     }
     @keyframes cardFlashGlow {
-      0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.65); background-color: #d1fae5; border-color: #10b981; }
-      35% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.25); background-color: #ecfdf5; border-color: #10b981; }
-      70% { box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15); background-color: #ecfdf5; border-color: #34d399; }
+      0% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.55); background-color: #fef9c3; border-color: #a855f7; }
+      35% { box-shadow: 0 0 0 6px rgba(250, 204, 21, 0.35); background-color: #faf5ff; border-color: #eab308; }
+      70% { box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.2); background-color: #fffbeb; border-color: #c084fc; }
       100% { box-shadow: none; }
     }
     .course-card.just-updated {
@@ -283,17 +283,17 @@ function injectEffectStyles() {
       align-items: center;
       justify-content: space-between;
       gap: 10px;
-      background: #ecfdf5;
-      border: 1px solid #a7f3d0;
-      border-left: 4px solid #059669;
-      color: #065f46;
+      background: linear-gradient(90deg, #f3e8ff 0%, #fef9c3 100%);
+      border: 1px solid #d8b4fe;
+      border-left: 4px solid #7c3aed;
+      color: #4c1d95;
       border-radius: 10px;
       padding: 10px 14px;
       margin-bottom: 16px;
       font-size: 0.88rem;
     }
     .active-track-banner strong {
-      color: #064e3b;
+      color: #3b0764;
     }
     .tag-overflow {
       background: #fef3c7;
@@ -301,8 +301,8 @@ function injectEffectStyles() {
       border: 1px solid #fcd34d;
     }
     .desc-box {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
+      background: #faf5ff;
+      border: 1px solid #e9d5ff;
       border-radius: 8px;
       padding: 10px 12px;
       margin-top: 8px;
@@ -316,12 +316,12 @@ function injectEffectStyles() {
       margin-bottom: 5px;
     }
     .desc-lang-th {
-      background: #dbeafe;
-      color: #1e40af;
+      background: #f3e8ff;
+      color: #6b21a8;
     }
     .desc-lang-en {
-      background: #e0f2fe;
-      color: #0369a1;
+      background: #fef3c7;
+      color: #92400e;
     }
     .desc-text {
       font-size: 0.86rem;
@@ -1259,7 +1259,7 @@ function renderRoadmap() {
                   </div>
                   <div class="card-title">${escapeHtml(displayTitle)}</div>
                   ${DB.courseMap[item.courseId]?.title_en ? `<div class="card-title-en">(${escapeHtml(DB.courseMap[item.courseId].title_en)})</div>` : ''}
-                  ${item.trackNote ? `<div style="font-size:0.78rem;color:#0f766e;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;padding:6px 8px;margin-top:6px;line-height:1.4;"><strong>คำแนะนำกลุ่ม:</strong> ${escapeHtml(item.trackNote)}</div>` : ''}
+                  ${item.trackNote ? `<div style="font-size:0.78rem;color:#5b21b6;background:linear-gradient(90deg,#faf5ff 0%,#fefce8 100%);border:1px solid #e9d5ff;border-radius:6px;padding:6px 8px;margin-top:6px;line-height:1.4;"><strong>คำแนะนำกลุ่ม:</strong> ${escapeHtml(item.trackNote)}</div>` : ''}
                 </div>
                 <div onclick="event.stopPropagation()">
                   ${!STATE.flexibleMode ? `
@@ -1371,8 +1371,8 @@ function openDrawer(courseId, uid) {
 
   if (item && item.trackNote) {
     body += `
-      <div class="detail-block" style="background:#ecfdf5;border:1px solid #a7f3d0;padding:10px;border-radius:8px;color:#065f46;">
-        <h4 style="color:#065f46;margin-bottom:4px;">คำแนะนำจากอาจารย์ประจำกลุ่ม</h4>
+      <div class="detail-block" style="background:linear-gradient(90deg,#faf5ff 0%,#fefce8 100%);border:1px solid #e9d5ff;padding:10px;border-radius:8px;color:#4c1d95;">
+        <h4 style="color:#5b21b6;margin-bottom:4px;">คำแนะนำจากอาจารย์ประจำกลุ่ม</h4>
         <p style="font-size:0.88rem;line-height:1.45;">${escapeHtml(item.trackNote)}</p>
       </div>
     `;

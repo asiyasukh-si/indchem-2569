@@ -1,29 +1,30 @@
 :root {
-  --primary: #1e3a8a;
-  --primary-light: #eff6ff;
-  --accent: #0f766e;
-  --bg: #f8fafc;
+  --primary: #6d28d9;
+  --primary-light: #f5f3ff;
+  --accent: #d97706;
+  --bg: #fdfbff;
   --card: #ffffff;
-  --border: #e2e8f0;
-  --text: #0f172a;
-  --muted: #64748b;
-  --cat-ge: #0ea5e9;
-  --cat-core: #6366f1;
-  --cat-major-req: #1d4ed8;
-  --cat-major-elec: #0d9488;
-  --cat-free: #d97706;
+  --border: #e9d5ff;
+  --text: #2e1065;
+  --muted: #6b5b95;
+  --cat-ge: #f59e0b;
+  --cat-core: #a78bfa;
+  --cat-major-req: #7c3aed;
+  --cat-major-elec: #ec4899;
+  --cat-free: #eab308;
   --hl-prereq: #f59e0b;
   --hl-coreq: #8b5cf6;
   --hl-unlock: #10b981;
-  --danger: #dc2626;
-  --success: #16a34a;
-  --radius: 10px;
+  --danger: #e11d48;
+  --success: #059669;
+  --radius: 12px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: 'Sarabun', sans-serif;
-  background: var(--bg);
+  background: linear-gradient(180deg, #faf5ff 0%, #fffdf5 55%, #faf5ff 100%);
+  background-attachment: fixed;
   color: var(--text);
   line-height: 1.5;
   padding-bottom: 60px;
@@ -31,10 +32,11 @@ body {
 
 /* Header */
 header {
-  background: linear-gradient(135deg, #1e3a8a 0%, #0f766e 100%);
-  color: #fff;
-  padding: 18px 20px;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.12);
+  background: linear-gradient(135deg, #e9d5ff 0%, #f3e8ff 45%, #fef3c7 100%);
+  color: #3b0764;
+  padding: 20px 22px;
+  border-bottom: 1px solid #e9d5ff;
+  box-shadow: 0 4px 16px rgba(109, 40, 217, 0.08);
 }
 .header-inner {
   max-width: 1400px;
@@ -45,8 +47,8 @@ header {
   align-items: center;
   gap: 12px;
 }
-.header-title h1 { font-size: 1.3rem; font-weight: 700; }
-.header-title p { font-size: 0.9rem; opacity: 0.9; }
+.header-title h1 { font-size: 1.3rem; font-weight: 700; color: #4c1d95; }
+.header-title p { font-size: 0.9rem; color: #6b21a8; opacity: 0.92; }
 .header-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* Buttons & Inputs */
@@ -67,32 +69,34 @@ button, select, input {
   align-items: center;
   gap: 6px;
 }
-.btn:hover { background: #f1f5f9; }
+.btn:hover { background: #faf5ff; border-color: #d8b4fe; }
 .btn-primary {
-  background: var(--primary);
+  background: #7c3aed;
   color: #fff;
-  border-color: var(--primary);
+  border-color: #7c3aed;
 }
-.btn-primary:hover { background: #1e40af; }
+.btn-primary:hover { background: #6d28d9; }
 .btn-accent {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fcd34d;
+  font-weight: 600;
 }
-.btn-accent:hover { background: #115e59; }
+.btn-accent:hover { background: #fde68a; border-color: #f59e0b; }
 .btn-ghost {
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.72);
+  color: #5b21b6;
+  border-color: #d8b4fe;
+  backdrop-filter: blur(4px);
 }
-.btn-ghost:hover { background: rgba(255, 255, 255, 0.25); }
+.btn-ghost:hover { background: #ffffff; border-color: #c084fc; box-shadow: 0 2px 6px rgba(109, 40, 217, 0.08); }
 .btn-sm { padding: 4px 8px; font-size: 0.8rem; border-radius: 6px; }
 .btn-danger-outline {
   color: var(--danger);
-  border-color: #fecaca;
-  background: #fef2f2;
+  border-color: #fecdd3;
+  background: #fff1f2;
 }
-.btn-danger-outline:hover { background: #fee2e2; }
+.btn-danger-outline:hover { background: #ffe4e6; }
 
 /* Container */
 .container {
@@ -103,7 +107,7 @@ button, select, input {
 
 /* Control Panel */
 .control-bar {
-  background: var(--card);
+  background: linear-gradient(135deg, #ffffff 0%, #faf5ff 65%, #fffbeb 100%);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px 16px;
@@ -113,6 +117,7 @@ button, select, input {
   justify-content: space-between;
   gap: 14px;
   margin-bottom: 14px;
+  box-shadow: 0 2px 10px rgba(109, 40, 217, 0.04);
 }
 .control-group {
   display: flex;
@@ -127,10 +132,10 @@ button, select, input {
 }
 .segmented {
   display: inline-flex;
-  background: #f1f5f9;
+  background: #f3e8ff;
   padding: 3px;
   border-radius: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid #e9d5ff;
 }
 .segmented button {
   border: none;
@@ -140,11 +145,12 @@ button, select, input {
   cursor: pointer;
   font-weight: 600;
   color: var(--muted);
+  transition: all 0.15s ease;
 }
 .segmented button.active {
-  background: #fff;
-  color: var(--primary);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background: linear-gradient(135deg, #ffffff 0%, #fef9c3 100%);
+  color: #5b21b6;
+  box-shadow: 0 1px 4px rgba(109, 40, 217, 0.14);
 }
 select.styled-select {
   padding: 6px 10px;
@@ -160,19 +166,19 @@ select.styled-select {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
+  background: #fef9c3;
+  border: 1px solid #fde047;
   padding: 6px 12px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.85rem;
   font-weight: 600;
-  color: #9a3412;
+  color: #854d0e;
 }
-.mode-switch input { width: 16px; height: 16px; accent-color: #ea580c; cursor: pointer; }
+.mode-switch input { width: 16px; height: 16px; accent-color: #7c3aed; cursor: pointer; }
 .mode-switch.active {
-  background: #ffedd5;
-  border-color: #fb923c;
+  background: #fef08a;
+  border-color: #facc15;
 }
 
 /* Credit Summary Bar */
@@ -183,35 +189,39 @@ select.styled-select {
   margin-bottom: 14px;
 }
 .stat-card {
-  background: var(--card);
+  background: linear-gradient(145deg, #ffffff 0%, #fcfaff 75%, #fffef5 100%);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 10px 14px;
-  transition: border-color 0.2s ease, background-color 0.2s ease;
+  box-shadow: 0 2px 8px rgba(109, 40, 217, 0.04);
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.15s ease;
+}
+.stat-card:hover {
+  border-color: #d8b4fe;
 }
 .stat-card.stat-short {
-  border-color: #fecaca;
-  background: #fef2f2;
+  border-color: #fecdd3;
+  background: linear-gradient(145deg, #fff1f2 0%, #ffe4e6 100%);
 }
 .stat-card.stat-short .stat-title {
-  color: #991b1b;
+  color: #9f1239;
 }
 .stat-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
 .stat-value { font-size: 1.12rem; font-weight: 700; margin: 2px 0 6px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px; }
 .stat-sub { font-size: 0.77rem; font-weight: 500; color: var(--muted); }
 .progress-track {
   height: 6px;
-  background: #e2e8f0;
+  background: #f3e8ff;
   border-radius: 999px;
   overflow: hidden;
 }
 .progress-fill {
   height: 100%;
-  background: var(--primary);
+  background: linear-gradient(90deg, #8b5cf6 0%, #f59e0b 100%);
   border-radius: 999px;
   transition: width 0.25s ease;
 }
-.progress-fill.done { background: var(--success); }
+.progress-fill.done { background: linear-gradient(90deg, #10b981 0%, #34d399 100%); }
 .progress-fill.short { background: var(--danger); }
 
 /* Highlight Legend */
@@ -244,62 +254,67 @@ select.styled-select {
 
 /* Roadmap Years */
 .year-section {
-  margin-bottom: 20px;
+  margin-bottom: 22px;
 }
 .year-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 10px;
-  padding-bottom: 6px;
-  border-bottom: 2px solid var(--border);
+  padding: 8px 14px;
+  background: linear-gradient(90deg, #f3e8ff 0%, #fef9c3 100%);
+  border: 1px solid #e9d5ff;
+  border-radius: 10px;
 }
-.year-title { font-size: 1.05rem; font-weight: 700; color: var(--primary); }
+.year-title { font-size: 1.05rem; font-weight: 700; color: #5b21b6; }
 .semesters-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 14px;
 }
 .semester-box {
-  background: #f1f5f9;
-  border: 1px solid var(--border);
+  background: linear-gradient(165deg, #f8f2ff 0%, #fffdf2 100%);
+  border: 1px solid #e9d5ff;
   border-radius: var(--radius);
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  box-shadow: 0 2px 8px rgba(109, 40, 217, 0.04);
 }
 .semester-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding-bottom: 6px;
-  border-bottom: 1px solid #cbd5e1;
+  border-bottom: 1px solid #e9d5ff;
 }
-.semester-name { font-weight: 700; font-size: 0.95rem; }
+.semester-name { font-weight: 700; font-size: 0.95rem; color: #4c1d95; }
 .credit-badge {
   font-size: 0.8rem;
   font-weight: 700;
-  padding: 2px 8px;
+  padding: 2px 10px;
   border-radius: 999px;
-  background: #e2e8f0;
-  color: var(--text);
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  color: #92400e;
 }
-.credit-badge.over { background: #fee2e2; color: var(--danger); }
+.credit-badge.over { background: #ffe4e6; border-color: #fecdd3; color: var(--danger); }
 
 /* Course Card */
 .course-card {
   background: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid #f3e8ff;
   border-left: 5px solid var(--cat-major-req);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 10px 12px;
   cursor: pointer;
   transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.15s ease;
   position: relative;
 }
 .course-card:hover {
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 4px 12px rgba(109, 40, 217, 0.1);
+  border-color: #d8b4fe;
   transform: translateY(-1px);
 }
 .course-card.cat-GE { border-left-color: var(--cat-ge); }
@@ -309,13 +324,13 @@ select.styled-select {
 .course-card.cat-Free { border-left-color: var(--cat-free); }
 
 .course-card.status-passed { background: #f0fdf4; border-color: #bbf7d0; }
-.course-card.status-enrolled { background: #eff6ff; border-color: #bfdbfe; }
-.course-card.status-failed { background: #fef2f2; border-color: #fecaca; opacity: 0.88; }
+.course-card.status-enrolled { background: #fefce8; border-color: #fde047; }
+.course-card.status-failed { background: #fff1f2; border-color: #fecdd3; opacity: 0.88; }
 
 /* Highlights */
 .course-card.hl-selected {
   outline: 2.5px solid var(--primary);
-  box-shadow: 0 0 0 4px rgba(30, 58, 138, 0.15);
+  box-shadow: 0 0 0 4px rgba(109, 40, 217, 0.16);
 }
 .course-card.hl-prereq {
   outline: 2.5px solid var(--hl-prereq);
@@ -367,11 +382,11 @@ select.styled-select {
   border-radius: 4px;
   font-size: 0.72rem;
   font-weight: 600;
-  background: #f1f5f9;
-  color: #475569;
+  background: #f3e8ff;
+  color: #5b21b6;
 }
-.tag-warn { background: #fee2e2; color: #b91c1c; }
-.tag-elec { background: #ccfbf1; color: #0f766e; }
+.tag-warn { background: #ffe4e6; color: #be123c; }
+.tag-elec { background: #fae8ff; color: #86198f; }
 .tag-hl-prereq { background: #fef3c7; color: #92400e; }
 .tag-hl-coreq { background: #ede9fe; color: #5b21b6; }
 .tag-hl-unlock { background: #d1fae5; color: #065f46; }
@@ -409,7 +424,7 @@ select.styled-select {
 .drawer-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.35);
+  background: rgba(46, 16, 101, 0.28);
   z-index: 90;
   display: none;
 }
@@ -421,9 +436,9 @@ select.styled-select {
   width: 100%;
   max-width: 420px;
   height: 100vh;
-  background: #fff;
+  background: #fffdf9;
   z-index: 100;
-  box-shadow: -4px 0 24px rgba(15, 23, 42, 0.16);
+  box-shadow: -4px 0 24px rgba(109, 40, 217, 0.14);
   transition: right 0.22s ease;
   display: flex;
   flex-direction: column;
@@ -436,7 +451,7 @@ select.styled-select {
   justify-content: space-between;
   align-items: flex-start;
   gap: 10px;
-  background: #f8fafc;
+  background: linear-gradient(135deg, #f3e8ff 0%, #fef9c3 100%);
 }
 .drawer-body {
   padding: 16px 18px;
@@ -460,15 +475,15 @@ select.styled-select {
   margin: 3px 4px 3px 0;
   cursor: pointer;
   border: 1px solid var(--border);
-  background: #f8fafc;
+  background: #faf5ff;
 }
-.rel-chip:hover { background: #e2e8f0; }
+.rel-chip:hover { background: #fef3c7; border-color: #fcd34d; }
 
 /* Modal */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(46, 16, 101, 0.4);
   z-index: 120;
   display: none;
   align-items: center;
@@ -485,7 +500,7 @@ select.styled-select {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 20px 40px rgba(46, 16, 101, 0.2);
 }
 .modal-head {
   padding: 14px 18px;
@@ -493,7 +508,7 @@ select.styled-select {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #f8fafc;
+  background: linear-gradient(135deg, #f3e8ff 0%, #fef9c3 100%);
 }
 .modal-tools {
   padding: 12px 18px;
@@ -524,11 +539,11 @@ select.styled-select {
   align-items: center;
   gap: 10px;
 }
-.picker-item:hover { background: #f8fafc; }
+.picker-item:hover { background: #faf5ff; }
 
 /* Loading & Error */
 .status-banner {
-  background: #fff;
+  background: linear-gradient(135deg, #faf5ff 0%, #fffbeb 100%);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 30px 20px;
@@ -549,21 +564,21 @@ select.styled-select {
   border-style: dashed;
 }
 .course-card.is-placeholder:not(.status-passed):not(.status-failed).cat-GE {
-  background: #f0f9ff;
-  border-color: #7dd3fc;
-}
-.course-card.is-placeholder:not(.status-passed):not(.status-failed).cat-MajorElec {
-  background: #f0fdfa;
-  border-color: #5eead4;
-}
-.course-card.is-placeholder:not(.status-passed):not(.status-failed).cat-Free {
   background: #fffbeb;
   border-color: #fcd34d;
 }
+.course-card.is-placeholder:not(.status-passed):not(.status-failed).cat-MajorElec {
+  background: #fdf4ff;
+  border-color: #f0abfc;
+}
+.course-card.is-placeholder:not(.status-passed):not(.status-failed).cat-Free {
+  background: #fefce8;
+  border-color: #fde047;
+}
 
-.tag-elec-ge { background: #e0f2fe; color: #0369a1; }
-.tag-elec-major { background: #ccfbf1; color: #0f766e; }
-.tag-elec-free { background: #fef3c7; color: #b45309; }
+.tag-elec-ge { background: #fef3c7; color: #b45309; }
+.tag-elec-major { background: #fae8ff; color: #a21caf; }
+.tag-elec-free { background: #fef9c3; color: #854d0e; }
 
 .card-title-en {
   font-size: 0.78rem;
@@ -584,7 +599,7 @@ select.styled-select {
 .tag-minor { background: #f3e8ff; color: #7e22ce; }
 
 .custom-add-box {
-  background: #f8fafc;
+  background: #faf5ff;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
