@@ -194,6 +194,79 @@ function formatTermsTh(termStr) {
   return [...new Set(labels)].join(' และ ');
 }
 
+function formatShortTermsBadge(termStr) {
+  const raw = String(termStr || '').trim();
+  if (!raw || raw === '-') return 'ไม่ระบุภาคเรียน';
+  const upper = raw.toUpperCase();
+  if (upper === 'VERIFY') return 'รอตรวจสอบภาคเรียน';
+  if (upper === 'ALL') return 'ทุกภาคเรียน';
+
+  const parts = upper.split(/[,/]/).map(s => s.trim()).filter(Boolean);
+  const hasT1 = parts.includes('T1') || parts.includes('1');
+  const hasT2 = parts.includes('T2') || parts.includes('2');
+  const hasSummer = parts.includes('SUMMER') || parts.includes('S') || parts.includes('T3') || parts.includes('3');
+
+  if (hasT1 && hasT2 && !hasSummer) return 'ภาค 1 และ 2';
+  const labels = [];
+  if (hasT1) labels.push('ภาค 1');
+  if (hasT2) labels.push('ภาค 2');
+  if (hasSummer) labels.push('ภาคฤดูร้อน');
+  return labels.length > 0 ? labels.join(', ') : raw;
+}
+
+function isCourseOfferedInSemester(course, sem) {
+  if (!course) return true;
+  const raw = String(course.offered_terms || '').trim();
+  if (!raw || raw === '-') return true;
+  const upper = raw.toUpperCase();
+  if (upper === 'VERIFY' || upper === 'ALL') return true;
+
+  const parts = upper.split(/[,/]/).map(s => s.trim()).filter(Boolean);
+  if (parts.length === 0 || parts.includes('ALL') || parts.includes('VERIFY')) return true;
+
+  if (sem === 1) {
+    return parts.includes('T1') || parts.includes('1');
+  }
+  if (sem === 2) {
+    return parts.includes('T2') || parts.includes('2');
+  }
+  if (sem === 3) {
+    return parts.includes('SUMMER') || parts.includes('S') || parts.includes('T3') || parts.includes('3');
+  }
+  return true;
+}
+
+function getCourseRecommendedYears(course, trackFilter) {
+  if (!course) return [];
+  const years = new Set();
+
+  if (trackFilter && trackFilter !== 'ALL' && trackFilter !== '209_GENERAL' && trackFilter !== 'NON_209') {
+    const specificRows = DB.tracks.filter(t => t.track_id === trackFilter && t.course_id === course.course_id);
+    specificRows.forEach(t => {
+      const y = Number(t.recommended_year);
+      if (y >= 1 && y <= 8) years.add(y);
+    });
+  }
+
+  const openTerm = String(course.open_term_suggested || '').trim();
+  const m = openTerm.match(/Y(\d+)/i);
+  if (m) {
+    const y = Number(m[1]);
+    if (y >= 1 && y <= 8) years.add(y);
+  }
+
+  const courseTracks = DB.tracksByCourse[course.course_id] || [];
+  courseTracks.forEach(t => {
+    if (Array.isArray(t.recommendedYears)) {
+      t.recommendedYears.forEach(y => {
+        if (y >= 1 && y <= 8) years.add(y);
+      });
+    }
+  });
+
+  return [...years].sort((a, b) => a - b);
+}
+
 function formatConditionTypeTh(type) {
   const map = {
     PREREQUISITE: 'วิชาบังคับก่อน',
@@ -511,15 +584,21 @@ function populateDBFromResults(results) {
     }
     if (t.course_id && t.track_id) {
       if (!DB.tracksByCourse[t.course_id]) DB.tracksByCourse[t.course_id] = [];
+      const recY = Number(t.recommended_year) || null;
+      const recS = Number(t.recommended_sem) || null;
       const existing = DB.tracksByCourse[t.course_id].find(x => x.trackId === t.track_id);
       if (!existing) {
         DB.tracksByCourse[t.course_id].push({
           trackId: t.track_id,
           trackName: tName,
-          isCommon
+          isCommon,
+          recommendedYears: recY ? [recY] : [],
+          recommendedSems: recS ? [recS] : []
         });
-      } else if (!isCommon) {
-        existing.isCommon = false;
+      } else {
+        if (!isCommon) existing.isCommon = false;
+        if (recY && !existing.recommendedYears.includes(recY)) existing.recommendedYears.push(recY);
+        if (recS && !existing.recommendedSems.includes(recS)) existing.recommendedSems.push(recS);
       }
     }
   });
@@ -1331,6 +1410,7 @@ function renderRoadmap() {
                   ${(item.isPlaceholder || item.isTrackOverflow) ? (catGroup === 'Free'
                     ? `<button class="btn btn-sm" onclick="editFreeElective('${escapeJsStr(item.uid)}')">ระบุชื่อวิชาเอง (ไม่บังคับ)</button>`
                     : `<button class="btn btn-sm" onclick="openPickerForSlot('${escapeJsStr(item.uid)}')">เลือก/เปลี่ยนวิชา</button>`) : ''}
+                  ${(item.isPlaceholder && !isEmptyPlaceholder(item)) ? `<button class="btn btn-sm btn-danger-outline" onclick="clearSlotCourse('${escapeJsStr(item.uid)}')" title="คืนค่าช่องนี้กลับเป็นช่องว่างเริ่มต้น">ล้างค่า</button>` : ''}
                   ${STATE.flexibleMode ? `<button class="btn btn-sm" onclick="openMoveModal('${escapeJsStr(item.uid)}')">ย้ายเทอม</button>` : ''}
                   ${STATE.flexibleMode && item.status === 'failed' ? `<button class="btn btn-sm btn-accent" onclick="retakeCourse('${escapeJsStr(item.uid)}')">+ ลงเรียนซ้ำ</button>` : ''}
                   ${(STATE.flexibleMode || item.isExtra || item.isTrackOverflow) ? `<button class="btn btn-sm btn-danger-outline" onclick="removeItem('${escapeJsStr(item.uid)}')">ลบ</button>` : ''}
@@ -1549,14 +1629,37 @@ function jumpToCourse(courseId) {
 // =========================================================================
 // 7. Elective Picker Modal
 // =========================================================================
+function updatePickerTermControls() {
+  const showAllCheckbox = document.getElementById('pickerShowAllTerms');
+  const showAllLabel = document.getElementById('pickerShowAllTermsLabel');
+  const clearBtn = document.getElementById('pickerClearSlotBtn');
+
+  if (showAllCheckbox) {
+    showAllCheckbox.checked = false;
+  }
+  if (showAllLabel && PICKER_CTX) {
+    const semText = PICKER_CTX.sem === 3 ? 'ภาคฤดูร้อน' : `ภาคการศึกษาที่ ${PICKER_CTX.sem}`;
+    showAllLabel.textContent = `แสดงวิชาทุกภาคการศึกษา (ค่าเริ่มต้นกรองเฉพาะ ${semText})`;
+  }
+  if (clearBtn && PICKER_CTX) {
+    if (PICKER_CTX.mode === 'replace' && PICKER_CTX.uid) {
+      const slot = STATE.items.find(i => i.uid === PICKER_CTX.uid);
+      clearBtn.style.display = (slot && slot.isPlaceholder && !isEmptyPlaceholder(slot)) ? 'inline-flex' : 'none';
+    } else {
+      clearBtn.style.display = 'none';
+    }
+  }
+}
+
 function openPickerForSlot(uid) {
   const slot = STATE.items.find(i => i.uid === uid);
   if (!slot) return;
   const seqMap = getMajorElectiveSequenceMap();
   const displayTitle = getDisplayTitleForItem(slot, seqMap);
   PICKER_CTX = { mode: 'replace', uid, year: slot.year, sem: slot.sem, category: slot.category };
-  document.getElementById('pickerTitle').textContent = `เลือกวิชาสำหรับช่อง: ${displayTitle} (${slot.credits} หน่วยกิต)`;
+  document.getElementById('pickerTitle').textContent = `เลือกวิชาสำหรับช่อง: ${displayTitle} (ชั้นปีที่ ${slot.year} ${slot.sem === 3 ? 'ภาคฤดูร้อน' : 'ภาคการศึกษาที่ ' + slot.sem} | ${slot.credits} หน่วยกิต)`;
   setupPickerFilters(slot.category === 'Major_Elective');
+  updatePickerTermControls();
   document.getElementById('customAddBox').style.display = 'none';
   document.getElementById('pickerModal').classList.add('open');
   renderPickerList();
@@ -1564,8 +1667,9 @@ function openPickerForSlot(uid) {
 
 function openPickerToAdd(year, sem) {
   PICKER_CTX = { mode: 'add', uid: null, year, sem, category: 'ALL' };
-  document.getElementById('pickerTitle').textContent = `เพิ่มรายวิชาใน ปี ${year} ${sem === 3 ? 'ภาคฤดูร้อน' : 'เทอม ' + sem}`;
+  document.getElementById('pickerTitle').textContent = `เพิ่มรายวิชาใน ชั้นปีที่ ${year} ${sem === 3 ? 'ภาคฤดูร้อน' : 'ภาคการศึกษาที่ ' + sem}`;
   setupPickerFilters(true);
+  updatePickerTermControls();
   document.getElementById('customAddBox').style.display = 'block';
   document.getElementById('pickerModal').classList.add('open');
   renderPickerList();
@@ -1594,10 +1698,14 @@ function setupPickerFilters(showTracks) {
 }
 
 function renderPickerList() {
+  if (!PICKER_CTX) return;
   const q = document.getElementById('pickerSearch').value.toLowerCase();
   const trackFilter = document.getElementById('pickerTrackFilter').value;
+  const showAllTerms = !!document.getElementById('pickerShowAllTerms')?.checked;
   const activeIds = new Set(STATE.items.filter(i => i.status !== 'failed').map(i => i.courseId));
   const allTrackCourseIds = new Set(DB.tracks.map(t => t.course_id).filter(Boolean));
+  const targetYear = Number(PICKER_CTX.year) || 3;
+  const targetSem = Number(PICKER_CTX.sem) || 1;
 
   let list = [...DB.courses];
 
@@ -1627,6 +1735,11 @@ function renderPickerList() {
     list = list.filter(c => selectedTrackCommonMap[c.course_id] !== undefined);
   }
 
+  // 1) กรองตามภาคการศึกษาที่เปิดสอน (ค่าเริ่มต้นเมื่อยังไม่ติ๊ก "แสดงวิชาทุกภาคการศึกษา")
+  if (!showAllTerms && (targetSem === 1 || targetSem === 2)) {
+    list = list.filter(c => isCourseOfferedInSemester(c, targetSem));
+  }
+
   if (q) {
     list = list.filter(c =>
       c.course_id.toLowerCase().includes(q) ||
@@ -1638,7 +1751,23 @@ function renderPickerList() {
     );
   }
 
+  // 2) เรียงลำดับโดยนำรายวิชาที่ชั้นปีแนะนำตรงกับชั้นปีของช่องที่กำลังเลือกขึ้นไว้ด้านบนสุดก่อน
+  // ตามด้วยรายวิชาของชั้นปีอื่น และวิชาที่ยังไม่ระบุชั้นปี
+  const getYearSortRank = (course) => {
+    const recYears = getCourseRecommendedYears(course, trackFilter);
+    if (recYears.length === 0) return { tier: 2, dist: 99, minYear: 99 };
+    if (recYears.includes(targetYear)) return { tier: 0, dist: 0, minYear: targetYear };
+    const minDist = Math.min(...recYears.map(y => Math.abs(y - targetYear)));
+    return { tier: 1, dist: minDist, minYear: recYears[0] };
+  };
+
   list.sort((a, b) => {
+    const rA = getYearSortRank(a);
+    const rB = getYearSortRank(b);
+    if (rA.tier !== rB.tier) return rA.tier - rB.tier;
+    if (rA.dist !== rB.dist) return rA.dist - rB.dist;
+    if (rA.minYear !== rB.minYear) return rA.minYear - rB.minYear;
+
     if (selectedTrackCommonMap) {
       const aCommon = selectedTrackCommonMap[a.course_id] ? 1 : 0;
       const bCommon = selectedTrackCommonMap[b.course_id] ? 1 : 0;
@@ -1652,16 +1781,27 @@ function renderPickerList() {
 
   const body = document.getElementById('pickerBody');
   if (list.length === 0) {
-    body.innerHTML = '<p style="text-align:center;color:var(--muted);padding:20px;">ไม่พบรายวิชาที่ค้นหา</p>';
+    body.innerHTML = `<p style="text-align:center;color:var(--muted);padding:20px;">ไม่พบรายวิชาที่เปิดสอนในภาคการศึกษานี้ หรือตรงกับคำค้นหา<br><small>คุณสามารถติ๊กช่อง <strong>"แสดงวิชาทุกภาคการศึกษา"</strong> ด้านบนเพื่อดูรายวิชาทั้งหมดได้ครับ</small></p>`;
     return;
   }
 
   body.innerHTML = list.map(c => {
     const alreadyIn = activeIds.has(c.course_id);
-    const curTermTag = PICKER_CTX.sem === 3 ? 'SUMMER' : `T${PICKER_CTX.sem}`;
-    const offered = (c.offered_terms || '').split(',').map(s => s.trim().toUpperCase());
-    const termWarn = c.offered_terms && c.offered_terms !== 'VERIFY' && !offered.includes(curTermTag) && !offered.includes('ALL')
-      ? `<span class="tag tag-warn">เปิดสอน ${formatTermsTh(c.offered_terms)}</span>` : '';
+    const recYears = getCourseRecommendedYears(c, trackFilter);
+    const isMatchedYear = recYears.includes(targetYear);
+    let yearBadge = '';
+    if (recYears.length > 0) {
+      yearBadge = `<span class="tag ${isMatchedYear ? 'tag-year-match' : 'tag-year-other'}">แนะนำปี ${escapeHtml(recYears.join('/'))}</span>`;
+    }
+
+    const rawTerms = String(c.offered_terms || '').trim();
+    const isVerifyTerm = !rawTerms || rawTerms.toUpperCase() === 'VERIFY';
+    const shortTermLabel = formatShortTermsBadge(rawTerms);
+    const offeredInTargetSem = isCourseOfferedInSemester(c, targetSem);
+    const termBadgeClass = !offeredInTargetSem
+      ? 'tag-warn'
+      : (isVerifyTerm ? 'tag-term-verify' : 'tag-term-badge');
+    const termBadge = `<span class="tag ${termBadgeClass}">${escapeHtml(shortTermLabel)}</span>`;
 
     const courseTracks = DB.tracksByCourse[c.course_id] || [];
     let groupBadge = '';
@@ -1677,15 +1817,47 @@ function renderPickerList() {
       groupBadge = '<span class="tag tag-minor">นอกภาควิชา</span>';
     }
 
+    const conds = DB.condByCourse[c.course_id] || [];
+    let condHtml = '';
+    if (conds.length > 0) {
+      const condParts = conds.map(cd => {
+        const typeLabel = formatConditionTypeTh(cd.condition_type);
+        const label = (cd.condition_type === 'YEAR_STATUS' || cd.condition_type === 'SPECIAL_RULE')
+          ? (cd.condition_note_th || cd.condition_course_id)
+          : cd.condition_course_id;
+        return `${typeLabel}: ${label}`;
+      });
+      condHtml = `<div class="picker-item-cond"><strong>เงื่อนไขก่อนเรียน:</strong> ${escapeHtml([...new Set(condParts)].join(' | '))}</div>`;
+    }
+
+    const descTh = (c.description_summary_th || c.description_full_th || '').trim();
+    const descEn = (c.description_full_en || '').trim();
+    let descHtml = '';
+    if (descTh || descEn) {
+      descHtml = `
+        <details style="margin-top:4px;font-size:0.78rem;color:var(--muted);">
+          <summary style="cursor:pointer;color:var(--primary);font-weight:600;user-select:none;">ดูคำอธิบายรายวิชา (TH / EN)</summary>
+          <div class="picker-item-desc">
+            ${descTh ? `<div><strong>TH:</strong> ${escapeHtml(descTh)}</div>` : ''}
+            ${descEn ? `<div style="margin-top:${descTh ? '4px' : '0'};"><strong>EN:</strong> ${escapeHtml(descEn)}</div>` : ''}
+          </div>
+        </details>
+      `;
+    }
+
     return `
       <div class="picker-item">
-        <div>
+        <div style="flex:1;min-width:0;">
           <div style="font-weight:700;font-size:0.9rem;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
             <span>${escapeHtml(c.course_id)} — ${escapeHtml(c.title_th)}</span>
+            ${yearBadge}
+            ${termBadge}
             ${groupBadge}
-            ${termWarn}
           </div>
-          <div style="font-size:0.8rem;color:var(--muted);">${escapeHtml(c.credits)} หน่วยกิต | หมวด: ${escapeHtml(formatCategoryTh(c.course_category))}</div>
+          ${c.title_en ? `<div style="font-size:0.78rem;color:var(--muted);">${escapeHtml(c.title_en)}</div>` : ''}
+          <div style="font-size:0.8rem;color:var(--muted);margin-top:2px;">${escapeHtml(c.credits)} หน่วยกิต | หมวด: ${escapeHtml(formatCategoryTh(c.course_category))}</div>
+          ${condHtml}
+          ${descHtml}
         </div>
         <button class="btn btn-sm ${alreadyIn ? '' : 'btn-primary'}" ${alreadyIn ? 'disabled' : ''} onclick="pickCourse('${escapeJsStr(c.course_id)}')">
           ${alreadyIn ? 'อยู่ในแผนแล้ว' : 'เลือกวิชานี้'}
@@ -1693,6 +1865,71 @@ function renderPickerList() {
       </div>
     `;
   }).join('');
+}
+
+function clearSlotCourse(uid, fromModal = false) {
+  let slot = STATE.items.find(i => i.uid === uid);
+  if (!slot || !slot.isPlaceholder) return;
+
+  const groupId = slot.slotGroupId || slot.uid;
+  const origInfo = DB.courseMap[slot.originalCourseId];
+
+  // คืนค่าช่องที่ถูกเลือกให้กลับเป็นช่องว่างเริ่มต้นก่อน
+  slot.courseId = slot.originalCourseId;
+  slot.title = origInfo ? origInfo.title_th : slot.originalTitle;
+  slot.trackNote = '';
+  slot.status = 'planned';
+
+  // หากเป็นช่องที่เคยแตกหน่วยกิตย่อย (slotGroupId เดียวกัน) ให้ยุบรวมช่องว่างย่อยที่ยังไม่ได้เลือกวิชาเข้าด้วยกัน
+  const groupSiblings = STATE.items.filter(other =>
+    (other.slotGroupId || other.uid) === groupId &&
+    other.isPlaceholder
+  );
+
+  if (groupSiblings.length > 1) {
+    const emptyGroupItems = groupSiblings.filter(it => isEmptyPlaceholder(it));
+    if (emptyGroupItems.length > 1) {
+      // ยุบรวมหน่วยกิตของช่องว่างทั้งหมดในกลุ่มเดียวกันไว้ที่ช่องหลัก (หรือช่องแรกของกลุ่ม)
+      const primarySlot = emptyGroupItems.find(it => !it.isSplitChild) || emptyGroupItems[0];
+      const mergedCredits = emptyGroupItems.reduce((sum, it) => sum + (Number(it.credits) || 0), 0);
+      primarySlot.credits = mergedCredits;
+      if (!primarySlot.isSplitChild) {
+        primarySlot.originalCredits = mergedCredits;
+      }
+      const removeUids = new Set(
+        emptyGroupItems.filter(it => it.uid !== primarySlot.uid).map(it => it.uid)
+      );
+      STATE.items = STATE.items.filter(it => !removeUids.has(it.uid));
+      slot = primarySlot;
+    }
+  } else {
+    slot.credits = slot.originalCredits || (origInfo ? origInfo.credits : 3);
+  }
+
+  // รันเลขลำดับวิชาเอกเลือกใหม่ตามตำแหน่งจริงในตาราง
+  const seqMap = getMajorElectiveSequenceMap();
+  STATE.items.forEach(it => {
+    if (isEmptyPlaceholder(it) && getCategoryGroup(it.category) === 'MajorElec') {
+      it.title = getDisplayTitleForItem(it, seqMap);
+    }
+  });
+
+  if (SELECTED_COURSE_ID && !STATE.items.some(i => i.courseId === SELECTED_COURSE_ID)) {
+    closeDrawer();
+  }
+
+  if (fromModal) {
+    closePickerModal();
+  }
+
+  saveState();
+  renderAll();
+  showToast('คืนค่าช่องวิชาเลือกเรียบร้อย', 'ล้างรายวิชาที่เลือกและคำนวณหน่วยกิตพร้อมตรวจสอบเงื่อนไขใหม่แล้วครับ', 3200);
+}
+
+function clearSlotFromPicker() {
+  if (!PICKER_CTX || PICKER_CTX.mode !== 'replace' || !PICKER_CTX.uid) return;
+  clearSlotCourse(PICKER_CTX.uid, true);
 }
 
 function pickCourse(courseId) {
