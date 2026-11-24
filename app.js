@@ -4,6 +4,8 @@
 const SPREADSHEET_ID = '1_IeTWmD1E6URJpAJo_xUE41ohTWBEucqk-oKRmbUs8s';
 
 const STORAGE_KEY = 'indchem2569_planner_v1';
+const DB_CACHE_KEY = 'indchem2569_db_cache_v1';
+const OBE_APP_URL = 'https://asiyasukh-si.github.io/ICCourse69/';
 const SHEETS = [
   'Courses',
   'Course_Conditions',
@@ -450,6 +452,93 @@ async function fetchSheet(sheetName) {
   return parseCSV(text);
 }
 
+function populateDBFromResults(results) {
+  const [courses, conditions, tracks, studyPlans, rules, plos, cloMapping] = results;
+
+  DB.courses = [];
+  DB.courseMap = {};
+  DB.conditions = [];
+  DB.condByCourse = {};
+  DB.unlocksByCourse = {};
+  DB.tracks = [];
+  DB.trackNames = {};
+  DB.tracksByCourse = {};
+  DB.studyPlans = [];
+  DB.rules = [];
+  DB.plos = {};
+  DB.cloByCourse = {};
+
+  // Process Courses
+  DB.courses = courses.map(c => ({
+    ...c,
+    course_id: normalizeCourseId(c.course_id),
+    credits: Number(c.credits) || 0
+  }));
+  DB.courses.forEach(c => { if (c.course_id) DB.courseMap[c.course_id] = c; });
+
+  // Process Conditions
+  DB.conditions = conditions.map(cond => ({
+    ...cond,
+    course_id: normalizeCourseId(cond.course_id),
+    condition_course_id: (cond.condition_type === 'PREREQUISITE' || cond.condition_type === 'COREQUISITE')
+      ? normalizeCourseId(cond.condition_course_id)
+      : String(cond.condition_course_id || '').trim()
+  }));
+
+  DB.conditions.forEach(cond => {
+    if (!cond.course_id) return;
+    if (!DB.condByCourse[cond.course_id]) DB.condByCourse[cond.course_id] = [];
+    DB.condByCourse[cond.course_id].push(cond);
+
+    if ((cond.condition_type === 'PREREQUISITE' || cond.condition_type === 'COREQUISITE') && cond.condition_course_id) {
+      if (!DB.unlocksByCourse[cond.condition_course_id]) DB.unlocksByCourse[cond.condition_course_id] = [];
+      if (!DB.unlocksByCourse[cond.condition_course_id].includes(cond.course_id)) {
+        DB.unlocksByCourse[cond.condition_course_id].push(cond.course_id);
+      }
+    }
+  });
+
+  // Process Tracks
+  DB.tracks = tracks.map(t => ({
+    ...t,
+    course_id: normalizeCourseId(t.course_id)
+  }));
+  DB.tracks.forEach(t => {
+    const tName = t.track_name_th || t.track_id;
+    const isCommon = isCommonOptionRow(t);
+    if (t.track_id && !DB.trackNames[t.track_id]) {
+      DB.trackNames[t.track_id] = tName;
+    }
+    if (t.course_id && t.track_id) {
+      if (!DB.tracksByCourse[t.course_id]) DB.tracksByCourse[t.course_id] = [];
+      const existing = DB.tracksByCourse[t.course_id].find(x => x.trackId === t.track_id);
+      if (!existing) {
+        DB.tracksByCourse[t.course_id].push({
+          trackId: t.track_id,
+          trackName: tName,
+          isCommon
+        });
+      } else if (!isCommon) {
+        existing.isCommon = false;
+      }
+    }
+  });
+
+  // Process Study Plans, Rules, PLOs, CLOs
+  DB.studyPlans = studyPlans.map(p => ({
+    ...p,
+    course_id: normalizeCourseId(p.course_id)
+  }));
+  DB.rules = rules;
+  plos.forEach(p => { DB.plos[p.outcome_id] = p; });
+  cloMapping.forEach(m => {
+    const cid = normalizeCourseId(m.course_id);
+    if (!cid) return;
+    if (!DB.cloByCourse[cid]) DB.cloByCourse[cid] = [];
+    DB.cloByCourse[cid].push({ ...m, course_id: cid });
+  });
+}
+
 async function initApp() {
   injectEffectStyles();
   const loadingBox = document.getElementById('loadingBox');
@@ -459,89 +548,45 @@ async function initApp() {
     return;
   }
 
+  let renderedFromCache = false;
+  try {
+    const cachedRaw = localStorage.getItem(DB_CACHE_KEY);
+    if (cachedRaw) {
+      const cached = JSON.parse(cachedRaw);
+      if (cached && Array.isArray(cached.results) && cached.results.length === SHEETS.length) {
+        populateDBFromResults(cached.results);
+        populateTrackDropdown();
+        loadOrBuildState();
+        loadingBox.style.display = 'none';
+        document.getElementById('appRoot').style.display = 'block';
+        renderAll();
+        renderedFromCache = true;
+      }
+    }
+  } catch (e) {}
+
   try {
     const results = await Promise.all(SHEETS.map(s => fetchSheet(s)));
-    const [courses, conditions, tracks, studyPlans, rules, plos, cloMapping] = results;
-
-    // Process Courses
-    DB.courses = courses.map(c => ({
-      ...c,
-      course_id: normalizeCourseId(c.course_id),
-      credits: Number(c.credits) || 0
-    }));
-    DB.courses.forEach(c => { if (c.course_id) DB.courseMap[c.course_id] = c; });
-
-    // Process Conditions
-    DB.conditions = conditions.map(cond => ({
-      ...cond,
-      course_id: normalizeCourseId(cond.course_id),
-      condition_course_id: (cond.condition_type === 'PREREQUISITE' || cond.condition_type === 'COREQUISITE')
-        ? normalizeCourseId(cond.condition_course_id)
-        : String(cond.condition_course_id || '').trim()
-    }));
-
-    DB.conditions.forEach(cond => {
-      if (!cond.course_id) return;
-      if (!DB.condByCourse[cond.course_id]) DB.condByCourse[cond.course_id] = [];
-      DB.condByCourse[cond.course_id].push(cond);
-
-      if ((cond.condition_type === 'PREREQUISITE' || cond.condition_type === 'COREQUISITE') && cond.condition_course_id) {
-        if (!DB.unlocksByCourse[cond.condition_course_id]) DB.unlocksByCourse[cond.condition_course_id] = [];
-        if (!DB.unlocksByCourse[cond.condition_course_id].includes(cond.course_id)) {
-          DB.unlocksByCourse[cond.condition_course_id].push(cond.course_id);
-        }
-      }
-    });
-
-    // Process Tracks
-    DB.tracks = tracks.map(t => ({
-      ...t,
-      course_id: normalizeCourseId(t.course_id)
-    }));
-    DB.tracks.forEach(t => {
-      const tName = t.track_name_th || t.track_id;
-      const isCommon = isCommonOptionRow(t);
-      if (t.track_id && !DB.trackNames[t.track_id]) {
-        DB.trackNames[t.track_id] = tName;
-      }
-      if (t.course_id && t.track_id) {
-        if (!DB.tracksByCourse[t.course_id]) DB.tracksByCourse[t.course_id] = [];
-        const existing = DB.tracksByCourse[t.course_id].find(x => x.trackId === t.track_id);
-        if (!existing) {
-          DB.tracksByCourse[t.course_id].push({
-            trackId: t.track_id,
-            trackName: tName,
-            isCommon
-          });
-        } else if (!isCommon) {
-          existing.isCommon = false;
-        }
-      }
-    });
-
-    // Process Study Plans, Rules, PLOs, CLOs
-    DB.studyPlans = studyPlans.map(p => ({
-      ...p,
-      course_id: normalizeCourseId(p.course_id)
-    }));
-    DB.rules = rules;
-    plos.forEach(p => { DB.plos[p.outcome_id] = p; });
-    cloMapping.forEach(m => {
-      const cid = normalizeCourseId(m.course_id);
-      if (!cid) return;
-      if (!DB.cloByCourse[cid]) DB.cloByCourse[cid] = [];
-      DB.cloByCourse[cid].push({ ...m, course_id: cid });
-    });
+    populateDBFromResults(results);
+    try {
+      localStorage.setItem(DB_CACHE_KEY, JSON.stringify({ results, updatedAt: Date.now() }));
+    } catch (e) {}
 
     populateTrackDropdown();
-    loadOrBuildState();
+    if (!renderedFromCache) {
+      loadOrBuildState();
+    } else {
+      syncControlsFromState();
+    }
 
     loadingBox.style.display = 'none';
     document.getElementById('appRoot').style.display = 'block';
     renderAll();
   } catch (err) {
-    loadingBox.classList.add('error');
-    loadingBox.innerHTML = `<strong>เกิดข้อผิดพลาดในการโหลดข้อมูลจาก Google Sheets</strong><br>${escapeHtml(err.message)}<br><small>กรุณาตรวจสอบว่าเปิดสิทธิ์แชร์ไฟล์เป็น Anyone with the link (Viewer) แล้ว</small>`;
+    if (!renderedFromCache) {
+      loadingBox.classList.add('error');
+      loadingBox.innerHTML = `<strong>เกิดข้อผิดพลาดในการโหลดข้อมูลจาก Google Sheets</strong><br>${escapeHtml(err.message)}<br><small>กรุณาตรวจสอบว่าเปิดสิทธิ์แชร์ไฟล์เป็น Anyone with the link (Viewer) แล้ว</small>`;
+    }
   }
 }
 
@@ -1382,6 +1427,7 @@ function openDrawer(courseId, uid) {
     const descTh = (c.description_full_th || '').trim() || (c.description_summary_th || '').trim();
     const descEn = (c.description_full_en || '').trim();
     const offeredLabel = formatTermsTh(c.offered_terms || c.open_term_suggested);
+    const isMajorCourse209 = /^209\d{3}$/.test(c.course_id);
 
     body += `
       <div class="detail-block">
@@ -1391,6 +1437,13 @@ function openDrawer(courseId, uid) {
           <strong>หมวดวิชา:</strong> ${escapeHtml(formatCategoryTh(c.course_category))}<br>
           <strong>ภาคเรียนที่เปิดสอน:</strong> ${escapeHtml(offeredLabel)}
         </p>
+        ${isMajorCourse209 ? `
+          <div style="margin-top:10px;">
+            <a class="btn btn-sm btn-primary" href="${OBE_APP_URL}?course=${encodeURIComponent(c.course_id)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">
+              ดูข้อกำหนดกระบวนวิชา (มคอ. 3 / ผู้สอน) &#8599;
+            </a>
+          </div>
+        ` : ''}
       </div>
     `;
 
