@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>คู่มือการเรียนและวางแผนลงทะเบียน | หลักสูตรเคมีอุตสาหกรรม มช. ฉบับปรับปรุง พ.ศ. 2569 (ใช้กับนักศึกษารหัส 69-73)</title>
+  <title>คู่มือการเรียนและวางแผนลงทะเบียน | หลักสูตรเคมีอุตสาหกรรม มช. (หลักสูตร 2569 และ 2564)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -14,8 +14,8 @@
 <header>
   <div class="header-inner">
     <div class="header-title">
-      <h1>คู่มือการเรียนและวางแผนลงทะเบียน หลักสูตรเคมีอุตสาหกรรม มช. ฉบับปรับปรุง พ.ศ. 2569 (ใช้กับนักศึกษารหัส 69-73)</h1>
-      <p>คณะวิทยาศาสตร์ มหาวิทยาลัยเชียงใหม่ — ระบบวางแผนการเรียน 4 ปี และตรวจสอบเงื่อนไขรายวิชา</p>
+      <h1 id="headerMainTitle">คู่มือการเรียนและวางแผนลงทะเบียน หลักสูตรเคมีอุตสาหกรรม มช. ฉบับปรับปรุง พ.ศ. 2569 (ใช้กับนักศึกษารหัส 69-73)</h1>
+      <p id="headerSubTitle">คณะวิทยาศาสตร์ มหาวิทยาลัยเชียงใหม่ — ระบบวางแผนการเรียน 4 ปี และตรวจสอบเงื่อนไขรายวิชา</p>
     </div>
     <div class="header-actions">
       <a class="btn btn-ghost" href="https://asiyasukh-si.github.io/PortalHub-IC-Curr69/" style="text-decoration:none;" title="กลับหน้าศูนย์รวมระบบสารสนเทศหลักสูตร 2569">← หน้าหลัก Portal</a>
@@ -36,11 +36,23 @@
   <div id="appRoot" style="display:none;">
     <!-- Control Bar -->
     <div class="control-bar">
-      <div class="control-group">
-        <span class="control-label">แผนการศึกษา:</span>
+      <div class="control-group" style="flex-wrap:wrap;gap:8px;">
+        <span class="control-label">เล่มหลักสูตร:</span>
         <div class="segmented">
+          <button id="btnCurr2569" class="active" onclick="switchCurriculumYear('2569')">หลักสูตร 2569 (รหัส 69+)</button>
+          <button id="btnCurr2564" onclick="switchCurriculumYear('2564')">หลักสูตร 2564 (รหัส 64-68)</button>
+        </div>
+
+        <span class="control-label" style="margin-left:6px;">แผนการศึกษา:</span>
+        <div id="planGroup2569" class="segmented">
           <button id="btnPlanRegular" class="active" onclick="switchPlanType('Regular')">แผนปกติ</button>
           <button id="btnPlanCoop" onclick="switchPlanType('Coop')">แผนสหกิจศึกษา</button>
+        </div>
+        <div id="planGroup2564" class="segmented" style="display:none;">
+          <button id="btnPlan64P1Reg" onclick="switchPlanType('Plan1_Regular')">แผน 1 ปกติ (เคมีอุตสาหกรรม)</button>
+          <button id="btnPlan64P1Coop" onclick="switchPlanType('Plan1_Coop')">แผน 1 สหกิจฯ</button>
+          <button id="btnPlan64P2Reg" onclick="switchPlanType('Plan2_Regular')">แผน 2 ปกติ (ซิลิเกตฯ)</button>
+          <button id="btnPlan64P2Coop" onclick="switchPlanType('Plan2_Coop')">แผน 2 สหกิจฯ</button>
         </div>
 
         <span class="control-label" style="margin-left:6px;">แพ็กเกจสายความเชี่ยวชาญ:</span>

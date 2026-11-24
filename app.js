@@ -1,10 +1,10 @@
 // =========================================================================
-// ตั้งค่ารหัสไฟล์ Google Sheets (นำรหัสระหว่าง /d/ กับ /edit มาวางแทนที่ด้านล่าง)
+// ตั้งค่ารหัสไฟล์ Google Sheets (รองรับทั้งหลักสูตร 2569 และ 2564)
 // =========================================================================
-const SPREADSHEET_ID = '1_IeTWmD1E6URJpAJo_xUE41ohTWBEucqk-oKRmbUs8s';
+const SPREADSHEET_ID_2569 = '1_IeTWmD1E6URJpAJo_xUE41ohTWBEucqk-oKRmbUs8s';
+const SPREADSHEET_ID_2564 = '1qIIDnN_cdYACN4K7qhHHVNdhIKhR4Ki-qvDpx24Nl3A';
 
-const STORAGE_KEY = 'indchem2569_planner_v1';
-const DB_CACHE_KEY = 'indchem2569_db_cache_v1';
+const ACTIVE_CURR_KEY = 'indchem_active_curriculum_year';
 const OBE_APP_URL = 'https://asiyasukh-si.github.io/ICCourse69/';
 const SHEETS = [
   'Courses',
@@ -34,13 +34,36 @@ const DB = {
 
 // User App State
 let STATE = {
-  planType: 'Regular',       // 'Regular' | 'Coop'
+  curriculumYear: '2569',    // '2569' | '2564'
+  planType: 'Regular',       // 2569: 'Regular' | 'Coop', 2564: 'Plan1_Regular' | 'Plan1_Coop' | 'Plan2_Regular' | 'Plan2_Coop'
   selectedTrack: '',
   flexibleMode: false,
   maxYear: 4,
   extraSummers: [],          // e.g. [1, 2]
   items: []                  // { uid, slotGroupId, isSplitChild, isTrackOverflow, year, sem, courseId, originalCourseId, title, originalTitle, credits, originalCredits, category, isPlaceholder, isExtra, placeholderRule, trackNote, status }
 };
+
+function getActiveCurriculumYear() {
+  return STATE.curriculumYear === '2564' ? '2564' : '2569';
+}
+
+function getActiveSpreadsheetId() {
+  return getActiveCurriculumYear() === '2564' ? SPREADSHEET_ID_2564 : SPREADSHEET_ID_2569;
+}
+
+function getStorageKey(currYear) {
+  const y = currYear || getActiveCurriculumYear();
+  return y === '2564' ? 'indchem2564_planner_v1' : 'indchem2569_planner_v1';
+}
+
+function getDbCacheKey(currYear) {
+  const y = currYear || getActiveCurriculumYear();
+  return y === '2564' ? 'indchem2564_db_cache_v1' : 'indchem2569_db_cache_v1';
+}
+
+function isCoopPlanType(planType) {
+  return planType === 'Coop' || planType === 'Plan1_Coop' || planType === 'Plan2_Coop';
+}
 
 let SELECTED_COURSE_ID = null;
 let PICKER_CTX = null;       // { mode: 'replace' | 'add', uid, year, sem, category }
@@ -165,6 +188,8 @@ function formatCategoryTh(cat) {
     Core_Science: 'วิชาแกนวิทยาศาสตร์',
     Core_Required: 'วิชาแกนวิทยาศาสตร์',
     Major_Required: 'วิชาเอกบังคับ',
+    Major_Elective_Req_P1: 'วิชาเอกบังคับเลือก (แผน 1 เคมีอุตสาหกรรม)',
+    Major_Elective_Req_P2: 'วิชาเอกบังคับเลือก (แผน 2 ซิลิเกตฯ)',
     Major_Elective: 'วิชาเอกเลือก',
     Free_Elective: 'วิชาเลือกเสรี',
     Minor_Extra: 'วิชาโท / เรียนเพิ่มนอกแผน'
@@ -173,6 +198,7 @@ function formatCategoryTh(cat) {
   if (!cat) return '-';
   if (cat.startsWith('GE')) return 'วิชาศึกษาทั่วไป';
   if (cat.startsWith('Core')) return 'วิชาแกนวิทยาศาสตร์';
+  if (cat.startsWith('Major_Elective_Req')) return 'วิชาเอกบังคับเลือกตามแผน';
   return cat;
 }
 
@@ -180,6 +206,7 @@ function formatTermsTh(termStr) {
   const raw = String(termStr || '').trim();
   if (!raw || raw === '-') return 'ไม่ระบุ';
   const upper = raw.toUpperCase();
+  if (upper === 'CLOSED' || upper === 'NONE') return 'ปิดการเรียนการสอนชั่วคราวในปีนี้';
   if (upper === 'VERIFY') return 'ตรวจสอบกับภาควิชา';
   if (upper === 'ALL') return 'เปิดสอนทุกภาคการศึกษา';
 
@@ -189,6 +216,7 @@ function formatTermsTh(termStr) {
     if (p === 'T2' || p === '2') return 'ภาคการศึกษาที่ 2';
     if (p === 'SUMMER' || p === 'S' || p === 'T3' || p === '3') return 'ภาคฤดูร้อน';
     if (p === 'ALL') return 'ทุกภาคการศึกษา';
+    if (p === 'CLOSED' || p === 'NONE') return 'ปิดชั่วคราวในปีนี้';
     return p;
   });
   return [...new Set(labels)].join(' และ ');
@@ -198,6 +226,7 @@ function formatShortTermsBadge(termStr) {
   const raw = String(termStr || '').trim();
   if (!raw || raw === '-') return 'ไม่ระบุภาคเรียน';
   const upper = raw.toUpperCase();
+  if (upper === 'CLOSED' || upper === 'NONE') return 'ปิดชั่วคราวในปีนี้';
   if (upper === 'VERIFY') return 'รอตรวจสอบภาคเรียน';
   if (upper === 'ALL') return 'ทุกภาคเรียน';
 
@@ -219,9 +248,11 @@ function isCourseOfferedInSemester(course, sem) {
   const raw = String(course.offered_terms || '').trim();
   if (!raw || raw === '-') return true;
   const upper = raw.toUpperCase();
+  if (upper === 'CLOSED' || upper === 'NONE') return false;
   if (upper === 'VERIFY' || upper === 'ALL') return true;
 
   const parts = upper.split(/[,/]/).map(s => s.trim()).filter(Boolean);
+  if (parts.includes('CLOSED') || parts.includes('NONE')) return false;
   if (parts.length === 0 || parts.includes('ALL') || parts.includes('VERIFY')) return true;
 
   if (sem === 1) {
@@ -517,8 +548,9 @@ function parseCSV(text) {
     });
 }
 
-async function fetchSheet(sheetName) {
-  const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+async function fetchSheet(sheetName, currYear) {
+  const ssId = (currYear || getActiveCurriculumYear()) === '2564' ? SPREADSHEET_ID_2564 : SPREADSHEET_ID_2569;
+  const url = `https://docs.google.com/spreadsheets/d/${ssId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`ไม่สามารถอ่านชีต ${sheetName} ได้ (HTTP ${res.status})`);
   const text = await res.text();
@@ -618,24 +650,19 @@ function populateDBFromResults(results) {
   });
 }
 
-async function initApp() {
-  injectEffectStyles();
+async function loadCurriculumDatabase(currYear) {
   const loadingBox = document.getElementById('loadingBox');
-  if (!SPREADSHEET_ID || SPREADSHEET_ID === 'PUT_YOUR_GOOGLE_SHEET_ID_HERE') {
-    loadingBox.classList.add('error');
-    loadingBox.innerHTML = '<strong>ยังไม่ได้ใส่รหัส Google Sheets</strong><br>กรุณาแก้ไขบรรทัด SPREADSHEET_ID ในไฟล์ app.js แล้วบันทึกลง GitHub อีกครั้งครับ';
-    return;
-  }
-
+  const cacheKey = getDbCacheKey(currYear);
   let renderedFromCache = false;
+
   try {
-    const cachedRaw = localStorage.getItem(DB_CACHE_KEY);
+    const cachedRaw = localStorage.getItem(cacheKey);
     if (cachedRaw) {
       const cached = JSON.parse(cachedRaw);
       if (cached && Array.isArray(cached.results) && cached.results.length === SHEETS.length) {
         populateDBFromResults(cached.results);
         populateTrackDropdown();
-        loadOrBuildState();
+        loadOrBuildState(currYear);
         loadingBox.style.display = 'none';
         document.getElementById('appRoot').style.display = 'block';
         renderAll();
@@ -644,16 +671,22 @@ async function initApp() {
     }
   } catch (e) {}
 
+  if (!renderedFromCache) {
+    loadingBox.classList.remove('error');
+    loadingBox.style.display = 'block';
+    loadingBox.textContent = `กำลังดึงข้อมูลหลักสูตร พ.ศ. ${currYear} จากฐานข้อมูล Google Sheets...`;
+  }
+
   try {
-    const results = await Promise.all(SHEETS.map(s => fetchSheet(s)));
+    const results = await Promise.all(SHEETS.map(s => fetchSheet(s, currYear)));
     populateDBFromResults(results);
     try {
-      localStorage.setItem(DB_CACHE_KEY, JSON.stringify({ results, updatedAt: Date.now() }));
+      localStorage.setItem(cacheKey, JSON.stringify({ results, updatedAt: Date.now() }));
     } catch (e) {}
 
     populateTrackDropdown();
     if (!renderedFromCache) {
-      loadOrBuildState();
+      loadOrBuildState(currYear);
     } else {
       syncControlsFromState();
     }
@@ -664,9 +697,50 @@ async function initApp() {
   } catch (err) {
     if (!renderedFromCache) {
       loadingBox.classList.add('error');
-      loadingBox.innerHTML = `<strong>เกิดข้อผิดพลาดในการโหลดข้อมูลจาก Google Sheets</strong><br>${escapeHtml(err.message)}<br><small>กรุณาตรวจสอบว่าเปิดสิทธิ์แชร์ไฟล์เป็น Anyone with the link (Viewer) แล้ว</small>`;
+      loadingBox.innerHTML = `<strong>เกิดข้อผิดพลาดในการโหลดข้อมูลหลักสูตร ${escapeHtml(currYear)} จาก Google Sheets</strong><br>${escapeHtml(err.message)}<br><small>กรุณาตรวจสอบว่าเปิดสิทธิ์แชร์ไฟล์เป็น Anyone with the link (Viewer) แล้ว</small>`;
     }
   }
+}
+
+async function initApp() {
+  injectEffectStyles();
+  let initialCurr = '2569';
+  try {
+    const urlCurr = new URLSearchParams(window.location.search).get('curr');
+    const savedCurr = localStorage.getItem(ACTIVE_CURR_KEY);
+    if (urlCurr === '2564' || urlCurr === '2569') {
+      initialCurr = urlCurr;
+    } else if (savedCurr === '2564' || savedCurr === '2569') {
+      initialCurr = savedCurr;
+    }
+  } catch (e) {}
+  STATE.curriculumYear = initialCurr;
+  await loadCurriculumDatabase(initialCurr);
+}
+
+async function switchCurriculumYear(newCurrYear) {
+  const targetYear = newCurrYear === '2564' ? '2564' : '2569';
+  if (getActiveCurriculumYear() === targetYear && STATE.items.length > 0) return;
+
+  // บันทึกสถานะของหลักสูตรเดิมลงคีย์ของหลักสูตรเดิมก่อนสลับ
+  const prevYear = getActiveCurriculumYear();
+  saveState(prevYear);
+
+  STATE.curriculumYear = targetYear;
+  try {
+    localStorage.setItem(ACTIVE_CURR_KEY, targetYear);
+  } catch (e) {}
+
+  SELECTED_COURSE_ID = null;
+  RECENTLY_UPDATED_UIDS.clear();
+  closeDrawer();
+  await loadCurriculumDatabase(targetYear);
+  showToast(
+    `สลับเป็นหลักสูตร พ.ศ. ${targetYear}`,
+    targetYear === '2564'
+      ? 'แสดงโครงสร้างแผนการเรียน หลักสูตรปรับปรุง พ.ศ. 2564 (สำหรับนักศึกษารหัส 64–68 แผน 1 และแผน 2)'
+      : 'แสดงโครงสร้างแผนการเรียน หลักสูตรปรับปรุง พ.ศ. 2569 (สำหรับนักศึกษารหัส 69–73)'
+  );
 }
 
 function populateTrackDropdown() {
@@ -681,9 +755,17 @@ function populateTrackDropdown() {
 // 2. State Management & Credit-Aware Slot Splitting / Carry-Over
 // =========================================================================
 function buildDefaultItems(planType) {
-  const allowedTypes = planType === 'Coop'
-    ? ['Regular_and_Coop', 'Coop_Only']
-    : ['Regular_and_Coop', 'Regular_Only'];
+  let allowedTypes = [];
+  if (getActiveCurriculumYear() === '2564') {
+    if (planType === 'Plan1_Coop') allowedTypes = ['All_64', 'Plan1_All', 'Plan1_Coop'];
+    else if (planType === 'Plan2_Regular') allowedTypes = ['All_64', 'Plan2_All', 'Plan2_Regular'];
+    else if (planType === 'Plan2_Coop') allowedTypes = ['All_64', 'Plan2_All', 'Plan2_Coop'];
+    else allowedTypes = ['All_64', 'Plan1_All', 'Plan1_Regular'];
+  } else {
+    allowedTypes = planType === 'Coop'
+      ? ['Regular_and_Coop', 'Coop_Only']
+      : ['Regular_and_Coop', 'Regular_Only'];
+  }
 
   return DB.studyPlans
     .filter(p => allowedTypes.includes(p.plan_type))
@@ -789,13 +871,21 @@ function createTrackOverflowItem(year, sem, candidate, credits) {
   return item;
 }
 
-function loadOrBuildState() {
+function loadOrBuildState(currYear) {
+  const targetYear = currYear === '2564' ? '2564' : '2569';
+  const defaultPlan = targetYear === '2564' ? 'Plan1_Regular' : 'Regular';
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(getStorageKey(targetYear));
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
         STATE = parsed;
+        STATE.curriculumYear = targetYear;
+        if (targetYear === '2564' && !['Plan1_Regular', 'Plan1_Coop', 'Plan2_Regular', 'Plan2_Coop'].includes(STATE.planType)) {
+          STATE.planType = 'Plan1_Regular';
+        } else if (targetYear === '2569' && !['Regular', 'Coop'].includes(STATE.planType)) {
+          STATE.planType = 'Regular';
+        }
         STATE.items.forEach(it => {
           it.courseId = normalizeCourseId(it.courseId);
           it.originalCourseId = normalizeCourseId(it.originalCourseId);
@@ -808,18 +898,53 @@ function loadOrBuildState() {
       }
     }
   } catch (e) {}
-  STATE.items = buildDefaultItems(STATE.planType);
+  STATE = {
+    curriculumYear: targetYear,
+    planType: defaultPlan,
+    selectedTrack: '',
+    flexibleMode: false,
+    maxYear: 4,
+    extraSummers: [],
+    items: buildDefaultItems(defaultPlan)
+  };
   saveState();
   syncControlsFromState();
 }
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(STATE));
+function saveState(currYearOverride) {
+  const targetKey = getStorageKey(currYearOverride || STATE.curriculumYear);
+  localStorage.setItem(targetKey, JSON.stringify(STATE));
 }
 
 function syncControlsFromState() {
-  document.getElementById('btnPlanRegular').classList.toggle('active', STATE.planType === 'Regular');
-  document.getElementById('btnPlanCoop').classList.toggle('active', STATE.planType === 'Coop');
+  const is64 = getActiveCurriculumYear() === '2564';
+  const btn69 = document.getElementById('btnCurr2569');
+  const btn64 = document.getElementById('btnCurr2564');
+  if (btn69) btn69.classList.toggle('active', !is64);
+  if (btn64) btn64.classList.toggle('active', is64);
+
+  const hdrMain = document.getElementById('headerMainTitle');
+  if (hdrMain) {
+    hdrMain.textContent = is64
+      ? 'คู่มือการเรียนและวางแผนลงทะเบียน หลักสูตรเคมีอุตสาหกรรม มช. ฉบับปรับปรุง พ.ศ. 2564 (สำหรับนักศึกษารหัส 64-68)'
+      : 'คู่มือการเรียนและวางแผนลงทะเบียน หลักสูตรเคมีอุตสาหกรรม มช. ฉบับปรับปรุง พ.ศ. 2569 (สำหรับนักศึกษารหัส 69-73)';
+  }
+
+  const grp69 = document.getElementById('planGroup2569');
+  const grp64 = document.getElementById('planGroup2564');
+  if (grp69) grp69.style.display = is64 ? 'none' : 'inline-flex';
+  if (grp64) grp64.style.display = is64 ? 'inline-flex' : 'none';
+
+  if (!is64) {
+    document.getElementById('btnPlanRegular')?.classList.toggle('active', STATE.planType === 'Regular');
+    document.getElementById('btnPlanCoop')?.classList.toggle('active', STATE.planType === 'Coop');
+  } else {
+    document.getElementById('btnPlan64P1Reg')?.classList.toggle('active', STATE.planType === 'Plan1_Regular');
+    document.getElementById('btnPlan64P1Coop')?.classList.toggle('active', STATE.planType === 'Plan1_Coop');
+    document.getElementById('btnPlan64P2Reg')?.classList.toggle('active', STATE.planType === 'Plan2_Regular');
+    document.getElementById('btnPlan64P2Coop')?.classList.toggle('active', STATE.planType === 'Plan2_Coop');
+  }
+
   document.getElementById('trackSelect').value = STATE.selectedTrack || '';
   document.getElementById('flexModeToggle').checked = !!STATE.flexibleMode;
   document.getElementById('flexSwitchLabel').classList.toggle('active', !!STATE.flexibleMode);
@@ -984,7 +1109,7 @@ function applySelectedTrack() {
             carriedOverCount++;
           } else {
             // 1.3) หากช่องว่างตลอดทั้งแผนเต็มหมดแล้วจริงๆ จึงสร้างช่องงอกเพิ่ม (ยกเว้นปี 4 เทอม 2 แผนสหกิจศึกษา)
-            const isCoopBlockedTerm = STATE.planType === 'Coop' && recY === 4 && recS === 2;
+            const isCoopBlockedTerm = isCoopPlanType(STATE.planType) && recY === 4 && recS === 2;
             if (!isCoopBlockedTerm) {
               usedIds.add(tc.course_id);
               const ovItem = createTrackOverflowItem(recY, recS, tc, cr);
@@ -1101,10 +1226,15 @@ function validateItem(item) {
 
   // 1) ตรวจสอบเทอมที่เปิดสอนจริง
   if (cInfo && cInfo.offered_terms && cInfo.offered_terms !== 'VERIFY') {
-    const offered = cInfo.offered_terms.split(',').map(s => s.trim().toUpperCase());
-    const curTermTag = item.sem === 3 ? 'SUMMER' : `T${item.sem}`;
-    if (offered.length > 0 && !offered.includes(curTermTag) && !offered.includes('ALL')) {
-      warnings.push(`ปกติวิชานี้เปิดสอนเฉพาะ ${formatTermsTh(cInfo.offered_terms)}`);
+    const rawTermUpper = String(cInfo.offered_terms).trim().toUpperCase();
+    if (rawTermUpper === 'CLOSED' || rawTermUpper === 'NONE') {
+      warnings.push('วิชานี้ถูกตั้งค่าปิดการเรียนการสอนชั่วคราวในปีการศึกษานี้');
+    } else {
+      const offered = rawTermUpper.split(',').map(s => s.trim());
+      const curTermTag = item.sem === 3 ? 'SUMMER' : `T${item.sem}`;
+      if (offered.length > 0 && !offered.includes(curTermTag) && !offered.includes('ALL')) {
+        warnings.push(`ปกติวิชานี้เปิดสอนเฉพาะ ${formatTermsTh(cInfo.offered_terms)}`);
+      }
     }
   }
 
@@ -1185,11 +1315,9 @@ function renderSummary() {
     planned: activeItems.filter(fn).reduce((s, i) => s + i.credits, 0)
   });
 
-  const isCoop = STATE.planType === 'Coop';
-  const majorReqRuleId = isCoop ? 'MAJOR_REQ_COOP' : 'MAJOR_REQ_REG';
-  const majorReqFallback = isCoop ? 61 : 58;
-  const majorElecRuleId = isCoop ? 'MAJOR_ELEC_COOP' : 'MAJOR_ELEC_REG';
-  const majorElecFallback = isCoop ? 15 : 18;
+  const is64 = getActiveCurriculumYear() === '2564';
+  const isCoop = isCoopPlanType(STATE.planType);
+  const isPlan2 = STATE.planType === 'Plan2_Regular' || STATE.planType === 'Plan2_Coop';
 
   const total = calc(() => true);
   const ge = calc(i => getCategoryGroup(i.category) === 'GE');
@@ -1210,18 +1338,41 @@ function renderSummary() {
   const free = calc(i => getCategoryGroup(i.category) === 'Free');
   const minor = calc(i => getCategoryGroup(i.category) === 'Minor');
 
-  const planSuffix = isCoop ? 'สหกิจฯ' : 'แผนปกติ';
-  const cards = [
-    { title: 'หน่วยกิตรวมตลอดหลักสูตร', data: total, target: getRuleMin('TOTAL_CREDITS', 135) },
-    { title: 'หมวดวิชาศึกษาทั่วไป (GE)', data: ge, target: getRuleMin('GE_TOTAL', 24) },
-    { title: 'วิชาแกนวิทยาศาสตร์', data: core, target: getRuleMin('CORE_TOTAL', 29) },
-    { title: 'วิชาเอกรวม (บังคับ + เลือก)', data: majorAll, target: getRuleMin('MAJOR_TOTAL', 76) },
-    { title: `วิชาเอกบังคับ (${planSuffix})`, data: majorReq, target: getRuleMin(majorReqRuleId, majorReqFallback) },
-    { title: `วิชาเอกเลือก (${planSuffix})`, data: majorElec, target: getRuleMin(majorElecRuleId, majorElecFallback) },
-    { title: 'วิชาเอกระดับ 300 ขึ้นไป', data: major300, target: getRuleMin('MAJOR_LVL300_PLUS', 36), isLevelRule: true },
-    { title: 'วิชาเอกระดับ 400', data: major400, target: getRuleMin('MAJOR_LVL400', 18), isLevelRule: true },
-    { title: 'วิชาเลือกเสรี', data: free, target: getRuleMin('FREE_ELEC', 6) }
-  ];
+  let cards = [];
+  if (!is64) {
+    const majorReqRuleId = isCoop ? 'MAJOR_REQ_COOP' : 'MAJOR_REQ_REG';
+    const majorReqFallback = isCoop ? 61 : 58;
+    const majorElecRuleId = isCoop ? 'MAJOR_ELEC_COOP' : 'MAJOR_ELEC_REG';
+    const majorElecFallback = isCoop ? 15 : 18;
+    const planSuffix = isCoop ? 'สหกิจฯ' : 'แผนปกติ';
+    cards = [
+      { title: 'หน่วยกิตรวมตลอดหลักสูตร', data: total, target: getRuleMin('TOTAL_CREDITS', 135) },
+      { title: 'หมวดวิชาศึกษาทั่วไป (GE)', data: ge, target: getRuleMin('GE_TOTAL', 24) },
+      { title: 'วิชาแกนวิทยาศาสตร์', data: core, target: getRuleMin('CORE_TOTAL', 29) },
+      { title: 'วิชาเอกรวม (บังคับ + เลือก)', data: majorAll, target: getRuleMin('MAJOR_TOTAL', 76) },
+      { title: `วิชาเอกบังคับ (${planSuffix})`, data: majorReq, target: getRuleMin(majorReqRuleId, majorReqFallback) },
+      { title: `วิชาเอกเลือก (${planSuffix})`, data: majorElec, target: getRuleMin(majorElecRuleId, majorElecFallback) },
+      { title: 'วิชาเอกระดับ 300 ขึ้นไป', data: major300, target: getRuleMin('MAJOR_LVL300_PLUS', 36), isLevelRule: true },
+      { title: 'วิชาเอกระดับ 400', data: major400, target: getRuleMin('MAJOR_LVL400', 18), isLevelRule: true },
+      { title: 'วิชาเลือกเสรี', data: free, target: getRuleMin('FREE_ELEC', 6) }
+    ];
+  } else {
+    const planLabel = isPlan2 ? 'แผน 2 ซิลิเกตฯ' : 'แผน 1 เคมีอุตสาหกรรม';
+    const totalTarget = isPlan2 ? getRuleMin('TOTAL_CREDITS_P2', 139) : getRuleMin('TOTAL_CREDITS_P1', 138);
+    const majorTotalTarget = isPlan2 ? getRuleMin('MAJOR_TOTAL_P2', 74) : getRuleMin('MAJOR_TOTAL_P1', 73);
+    const majorReqTarget = isPlan2 ? (41 + 18) : (41 + 17);
+    cards = [
+      { title: `หน่วยกิตรวม (${planLabel})`, data: total, target: totalTarget },
+      { title: 'หมวดวิชาศึกษาทั่วไป (GE)', data: ge, target: getRuleMin('GE_TOTAL', 30) },
+      { title: 'วิชาแกนวิทยาศาสตร์', data: core, target: getRuleMin('CORE_TOTAL', 29) },
+      { title: `วิชาเอกรวม (${planLabel})`, data: majorAll, target: majorTotalTarget },
+      { title: `วิชาเอกบังคับ + บังคับเลือก (${planLabel})`, data: majorReq, target: majorReqTarget },
+      { title: 'วิชาเอกเลือก (ไม่น้อยกว่า)', data: majorElec, target: getRuleMin('MAJOR_ELEC_ALL', 15) },
+      { title: 'วิชาเอกระดับ 300 ขึ้นไป', data: major300, target: getRuleMin('MAJOR_LVL300_PLUS', 36), isLevelRule: true },
+      { title: 'วิชาเอกระดับ 400', data: major400, target: getRuleMin('MAJOR_LVL400', 18), isLevelRule: true },
+      { title: 'วิชาเลือกเสรี', data: free, target: getRuleMin('FREE_ELEC', 6) }
+    ];
+  }
 
   const grid = document.getElementById('summaryGrid');
   let html = cards.map(c => {
@@ -1735,7 +1886,15 @@ function renderPickerList() {
     list = list.filter(c => selectedTrackCommonMap[c.course_id] !== undefined);
   }
 
-  // 1) กรองตามภาคการศึกษาที่เปิดสอน (ค่าเริ่มต้นเมื่อยังไม่ติ๊ก "แสดงวิชาทุกภาคการศึกษา")
+  // 1) ซ่อนรายวิชาที่ตั้งค่าปิดการเรียนการสอนชั่วคราว (CLOSED) เสมอเมื่อยังไม่ติ๊กแสดงทุกภาคการศึกษา
+  if (!showAllTerms) {
+    list = list.filter(c => {
+      const t = String(c.offered_terms || '').trim().toUpperCase();
+      return t !== 'CLOSED' && t !== 'NONE';
+    });
+  }
+
+  // 2) กรองตามภาคการศึกษาที่เปิดสอน (ค่าเริ่มต้นเมื่อยังไม่ติ๊ก "แสดงวิชาทุกภาคการศึกษา")
   if (!showAllTerms && (targetSem === 1 || targetSem === 2)) {
     list = list.filter(c => isCourseOfferedInSemester(c, targetSem));
   }
@@ -2094,7 +2253,7 @@ function exportPlanJSON() {
   const blob = new Blob([JSON.stringify(STATE, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `study-plan-indchem2569-${STATE.planType}.json`;
+  a.download = `study-plan-indchem${getActiveCurriculumYear()}-${STATE.planType}.json`;
   a.click();
 }
 
