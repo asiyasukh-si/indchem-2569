@@ -268,9 +268,29 @@ function isCourseOfferedInSemester(course, sem) {
   return true;
 }
 
+function parseRecommendedYearsArray(rawVal) {
+  const str = String(rawVal || '').trim().toUpperCase();
+  if (!str || str === 'ANY' || str === 'NONE' || str === 'ALL') return [];
+  const found = [];
+  const matches = str.match(/[1-8]/g);
+  if (matches) {
+    matches.forEach(d => {
+      const n = Number(d);
+      if (n >= 1 && n <= 8 && !found.includes(n)) found.push(n);
+    });
+  }
+  return found.sort((a, b) => a - b);
+}
+
 function getCourseRecommendedYears(course, trackFilter) {
   if (!course) return [];
   const years = new Set();
+
+  if (Array.isArray(course.live_recommended_years)) {
+    course.live_recommended_years.forEach(y => {
+      if (y >= 1 && y <= 8) years.add(y);
+    });
+  }
 
   if (trackFilter && trackFilter !== 'ALL' && trackFilter !== '209_GENERAL' && trackFilter !== 'NON_209') {
     const specificRows = DB.tracks.filter(t => t.track_id === trackFilter && t.course_id === course.course_id);
@@ -281,10 +301,12 @@ function getCourseRecommendedYears(course, trackFilter) {
   }
 
   const openTerm = String(course.open_term_suggested || '').trim();
-  const m = openTerm.match(/Y(\d+)/i);
-  if (m) {
-    const y = Number(m[1]);
-    if (y >= 1 && y <= 8) years.add(y);
+  const mAll = openTerm.match(/Y(\d+)/gi);
+  if (mAll) {
+    mAll.forEach(tag => {
+      const y = Number(tag.replace(/\D/g, ''));
+      if (y >= 1 && y <= 8) years.add(y);
+    });
   }
 
   const courseTracks = DB.tracksByCourse[course.course_id] || [];
@@ -598,8 +620,9 @@ function deriveSingleSemesterFromOfferedTerms(offeredTerms) {
 
 function applyObeLiveTermsOverlay(obeSpecs, obeInstructors) {
   const liveTermsByCourseId = {};
+  const liveRecYearsByCourseId = {};
 
-  // 1) ดึงค่า offered_semesters จาก Course_Specs (เฉพาะแถวที่ระบุค่าไว้ชัดเจน)
+  // 1) ดึงค่า offered_semesters และ recommended_year จาก Course_Specs
   if (Array.isArray(obeSpecs)) {
     obeSpecs.forEach(row => {
       const cid = normalizeCourseId(row.course_id);
@@ -608,10 +631,13 @@ function applyObeLiveTermsOverlay(obeSpecs, obeInstructors) {
       if (mapped) {
         liveTermsByCourseId[cid] = { terms: mapped, fromExplicitSave: Boolean(row.course_group || row.curriculum_version) };
       }
+      if (row.recommended_year !== undefined && String(row.recommended_year).trim() !== '') {
+        liveRecYearsByCourseId[cid] = String(row.recommended_year).trim().toUpperCase();
+      }
     });
   }
 
-  // 2) ดึงค่า semester จาก Course_Instructors เฉพาะแถวที่อาจารย์/Admin กดบันทึกในระบบจัดการภาระงานสอน (มี updated_by หรือ updated_at)
+  // 2) ดึงค่า semester และ recommended_year จาก Course_Instructors เฉพาะแถวที่อาจารย์/Admin กดบันทึกในระบบจัดการภาระงานสอน
   if (Array.isArray(obeInstructors)) {
     obeInstructors.forEach(row => {
       const cid = normalizeCourseId(row.course_id);
@@ -621,30 +647,46 @@ function applyObeLiveTermsOverlay(obeSpecs, obeInstructors) {
       if (mapped) {
         liveTermsByCourseId[cid] = { terms: mapped, fromExplicitSave: true };
       }
+      if (row.recommended_year !== undefined && String(row.recommended_year).trim() !== '') {
+        liveRecYearsByCourseId[cid] = String(row.recommended_year).trim().toUpperCase();
+      }
     });
   }
 
   // 3) นำไปอัปเดต DB.courses และ DB.courseMap
   DB.courses.forEach(c => {
     const live = liveTermsByCourseId[c.course_id];
-    if (!live) return;
-    const curOffered = String(c.offered_terms || '').trim().toUpperCase();
-    // สำหรับวิชาเอกเลือก (หรือวิชาที่เคยเป็น VERIFY หรือวิชาที่ Admin กดบันทึกแก้ภาคเรียนใน APP03) ให้ใช้ภาคเรียนล่าสุดจาก APP03 ทันที
-    if (c.course_category === 'Major_Elective' || !curOffered || curOffered === 'VERIFY' || live.fromExplicitSave) {
-      // ยกเว้นวิชาเอกบังคับที่ล็อกเทอมตามแผนมาตรฐาน (เช่น 209305 อยู่ปี 3 เทอม 2) ไม่ให้ค่าตั้งต้น 1 ไปทับ เว้นแต่เป็นวิชาเอกเลือก
-      if (c.course_category === 'Major_Elective' || live.terms === 'CLOSED') {
-        c.offered_terms = live.terms;
+    if (live) {
+      const curOffered = String(c.offered_terms || '').trim().toUpperCase();
+      if (c.course_category === 'Major_Elective' || !curOffered || curOffered === 'VERIFY' || live.fromExplicitSave) {
+        if (c.course_category === 'Major_Elective' || live.terms === 'CLOSED') {
+          c.offered_terms = live.terms;
+        }
+      }
+    }
+
+    const liveRecYRaw = liveRecYearsByCourseId[c.course_id];
+    if (liveRecYRaw !== undefined) {
+      const parsedYears = parseRecommendedYearsArray(liveRecYRaw);
+      c.live_recommended_years = parsedYears;
+      if (c.course_category === 'Major_Elective') {
+        c.open_term_suggested = parsedYears.length > 0
+          ? `Elective_Y${parsedYears.join('_Y')}`
+          : 'Elective';
       }
     }
   });
 
-  // 4) ซิงก์ recommended_sem ใน DB.tracks และ DB.tracksByCourse ให้ตรงกับภาคการศึกษาที่เปิดสอนจริง (T1 -> 1, T2 -> 2)
+  // 4) ซิงก์ recommended_sem และ recommended_year ใน DB.tracks และ DB.tracksByCourse ให้ตรงกับที่อาจารย์ผู้สอนตั้งค่าไว้
   DB.tracks.forEach(t => {
     const cInfo = DB.courseMap[t.course_id];
     if (!cInfo) return;
     const singleSem = deriveSingleSemesterFromOfferedTerms(cInfo.offered_terms);
     if (singleSem) {
       t.recommended_sem = String(singleSem);
+    }
+    if (Array.isArray(cInfo.live_recommended_years) && cInfo.live_recommended_years.length > 0) {
+      t.recommended_year = String(cInfo.live_recommended_years[0]);
     }
   });
 
@@ -1310,6 +1352,14 @@ function applySelectedTrack() {
     }
   };
 
+  const getEffectiveRecommendedYear = (tc) => {
+    const cInfo = DB.courseMap[tc.course_id];
+    if (cInfo && Array.isArray(cInfo.live_recommended_years) && cInfo.live_recommended_years.length > 0) {
+      return cInfo.live_recommended_years[0];
+    }
+    return Number(tc.recommended_year) || null;
+  };
+
   const getEffectiveRecommendedSem = (tc) => {
     const cInfo = DB.courseMap[tc.course_id];
     if (cInfo) {
@@ -1338,7 +1388,7 @@ function applySelectedTrack() {
     // หากเทอมนั้นเต็มแล้ว ให้ขยับไปทดแทนในช่องว่างของเทอมถัดไปที่เปิดสอนวิชานั้น (Carry-Over) ก่อนสร้างช่องงอก
     activePool.forEach(tc => {
       if (usedIds.has(tc.course_id)) return;
-      const recY = Number(tc.recommended_year);
+      const recY = getEffectiveRecommendedYear(tc);
       const recS = getEffectiveRecommendedSem(tc);
       if (!recY || !recS) return;
       const cr = getCourseCredits(tc);
