@@ -58,7 +58,7 @@ function getStorageKey(currYear) {
 
 function getDbCacheKey(currYear) {
   const y = currYear || getActiveCurriculumYear();
-  return y === '2564' ? 'indchem2564_db_cache_v1' : 'indchem2569_db_cache_v1';
+  return y === '2564' ? 'indchem2564_db_cache_v1' : 'indchem2569_db_cache_v2';
 }
 
 function isCoopPlanType(planType) {
@@ -871,6 +871,40 @@ function createTrackOverflowItem(year, sem, candidate, credits) {
   return item;
 }
 
+function migrate2569Year3SlotSwap(items) {
+  if (!Array.isArray(items)) return false;
+  let migrated = false;
+  const free1 = items.find(it => it.originalCourseId === 'FREE_ELEC_1' && !it.isSplitChild);
+  const major1GroupItems = items.filter(it => it.originalCourseId === 'MAJOR_ELEC_1');
+
+  if (free1 && free1.year === 3 && free1.sem === 1) {
+    free1.sem = 2;
+    migrated = true;
+  }
+  if (major1GroupItems.length > 0 && major1GroupItems.every(it => it.year === 3 && it.sem === 2)) {
+    major1GroupItems.forEach(it => {
+      it.sem = 1;
+    });
+    migrated = true;
+  }
+
+  if (migrated) {
+    const getSlotTypeOrder = (it) => {
+      const grp = getCategoryGroup(it.category);
+      if (grp === 'GE' || grp === 'Core' || grp === 'MajorReq') return 1;
+      if (grp === 'MajorElec') return 2;
+      if (grp === 'Free') return 3;
+      return 4;
+    };
+    items.sort((a, b) => {
+      const termDiff = termOrder(a.year, a.sem) - termOrder(b.year, b.sem);
+      if (termDiff !== 0) return termDiff;
+      return getSlotTypeOrder(a) - getSlotTypeOrder(b);
+    });
+  }
+  return migrated;
+}
+
 function loadOrBuildState(currYear) {
   const targetYear = currYear === '2564' ? '2564' : '2569';
   const defaultPlan = targetYear === '2564' ? 'Plan1_Regular' : 'Regular';
@@ -893,6 +927,9 @@ function loadOrBuildState(currYear) {
           if (it.isSplitChild === undefined) it.isSplitChild = false;
           if (it.isTrackOverflow === undefined) it.isTrackOverflow = false;
         });
+        if (targetYear === '2569' && migrate2569Year3SlotSwap(STATE.items)) {
+          saveState(targetYear);
+        }
         syncControlsFromState();
         return;
       }
