@@ -3,6 +3,7 @@
 // =========================================================================
 const SPREADSHEET_ID_2569 = '1_IeTWmD1E6URJpAJo_xUE41ohTWBEucqk-oKRmbUs8s';
 const SPREADSHEET_ID_2564 = '1qIIDnN_cdYACN4K7qhHHVNdhIKhR4Ki-qvDpx24Nl3A';
+const SPREADSHEET_ID_OBE_MASTER = '1IYdpERFIrsJXXIeVr7DGNos-DXsOs25pz22it071yus';
 
 const ACTIVE_CURR_KEY = 'indchem_active_curriculum_year';
 const OBE_APP_URL = 'https://asiyasukh-si.github.io/ICCourse69/';
@@ -58,7 +59,7 @@ function getStorageKey(currYear) {
 
 function getDbCacheKey(currYear) {
   const y = currYear || getActiveCurriculumYear();
-  return y === '2564' ? 'indchem2564_db_cache_v1' : 'indchem2569_db_cache_v2';
+  return y === '2564' ? 'indchem2564_db_cache_v3' : 'indchem2569_db_cache_v3';
 }
 
 function isCoopPlanType(planType) {
@@ -557,6 +558,122 @@ async function fetchSheet(sheetName, currYear) {
   return parseCSV(text);
 }
 
+async function fetchObeMasterSheet(sheetName) {
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID_OBE_MASTER}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) return [];
+    const text = await res.text();
+    return parseCSV(text);
+  } catch (e) {
+    return [];
+  }
+}
+
+function mapObeSemKeyToOfferedTerms(semRaw) {
+  const raw = String(semRaw || '').trim().toUpperCase();
+  if (!raw) return '';
+  if (raw === 'CLOSED' || raw === 'NONE' || raw === '0' || raw.includes('ปิด')) return 'CLOSED';
+  if (raw === 'ALL' || (raw.includes('1') && raw.includes('2') && raw.includes('3'))) return 'ALL';
+  const parts = raw.split(/[,/|+&\s]+/).map(s => s.trim()).filter(Boolean);
+  const terms = [];
+  parts.forEach(p => {
+    if (p === '1' || p === 'T1' || p === 'ภาค1') terms.push('T1');
+    else if (p === '2' || p === 'T2' || p === 'ภาค2') terms.push('T2');
+    else if (p === '3' || p === 'T3' || p === 'S' || p === 'SUMMER') terms.push('SUMMER');
+  });
+  return [...new Set(terms)].join(',');
+}
+
+function deriveSingleSemesterFromOfferedTerms(offeredTerms) {
+  const raw = String(offeredTerms || '').trim().toUpperCase();
+  if (!raw || raw === 'VERIFY' || raw === 'ALL' || raw === 'CLOSED' || raw === 'NONE') return null;
+  const parts = raw.split(/[,/]/).map(s => s.trim()).filter(Boolean);
+  const has1 = parts.includes('T1') || parts.includes('1');
+  const has2 = parts.includes('T2') || parts.includes('2');
+  if (has1 && !has2) return 1;
+  if (has2 && !has1) return 2;
+  return null;
+}
+
+function applyObeLiveTermsOverlay(obeSpecs, obeInstructors) {
+  const liveTermsByCourseId = {};
+
+  // 1) ดึงค่า offered_semesters จาก Course_Specs (เฉพาะแถวที่ระบุค่าไว้ชัดเจน)
+  if (Array.isArray(obeSpecs)) {
+    obeSpecs.forEach(row => {
+      const cid = normalizeCourseId(row.course_id);
+      if (!cid) return;
+      const mapped = mapObeSemKeyToOfferedTerms(row.offered_semesters);
+      if (mapped) {
+        liveTermsByCourseId[cid] = { terms: mapped, fromExplicitSave: Boolean(row.course_group || row.curriculum_version) };
+      }
+    });
+  }
+
+  // 2) ดึงค่า semester จาก Course_Instructors เฉพาะแถวที่อาจารย์/Admin กดบันทึกในระบบจัดการภาระงานสอน (มี updated_by หรือ updated_at)
+  if (Array.isArray(obeInstructors)) {
+    obeInstructors.forEach(row => {
+      const cid = normalizeCourseId(row.course_id);
+      const hasExplicitUpdate = Boolean((row.updated_by || '').trim() || (row.updated_at || '').trim());
+      if (!cid || !hasExplicitUpdate) return;
+      const mapped = mapObeSemKeyToOfferedTerms(row.semester);
+      if (mapped) {
+        liveTermsByCourseId[cid] = { terms: mapped, fromExplicitSave: true };
+      }
+    });
+  }
+
+  // 3) นำไปอัปเดต DB.courses และ DB.courseMap
+  DB.courses.forEach(c => {
+    const live = liveTermsByCourseId[c.course_id];
+    if (!live) return;
+    const curOffered = String(c.offered_terms || '').trim().toUpperCase();
+    // สำหรับวิชาเอกเลือก (หรือวิชาที่เคยเป็น VERIFY หรือวิชาที่ Admin กดบันทึกแก้ภาคเรียนใน APP03) ให้ใช้ภาคเรียนล่าสุดจาก APP03 ทันที
+    if (c.course_category === 'Major_Elective' || !curOffered || curOffered === 'VERIFY' || live.fromExplicitSave) {
+      // ยกเว้นวิชาเอกบังคับที่ล็อกเทอมตามแผนมาตรฐาน (เช่น 209305 อยู่ปี 3 เทอม 2) ไม่ให้ค่าตั้งต้น 1 ไปทับ เว้นแต่เป็นวิชาเอกเลือก
+      if (c.course_category === 'Major_Elective' || live.terms === 'CLOSED') {
+        c.offered_terms = live.terms;
+      }
+    }
+  });
+
+  // 4) ซิงก์ recommended_sem ใน DB.tracks และ DB.tracksByCourse ให้ตรงกับภาคการศึกษาที่เปิดสอนจริง (T1 -> 1, T2 -> 2)
+  DB.tracks.forEach(t => {
+    const cInfo = DB.courseMap[t.course_id];
+    if (!cInfo) return;
+    const singleSem = deriveSingleSemesterFromOfferedTerms(cInfo.offered_terms);
+    if (singleSem) {
+      t.recommended_sem = String(singleSem);
+    }
+  });
+
+  DB.tracksByCourse = {};
+  DB.tracks.forEach(t => {
+    const tName = t.track_name_th || t.track_id;
+    const isCommon = isCommonOptionRow(t);
+    if (t.course_id && t.track_id) {
+      if (!DB.tracksByCourse[t.course_id]) DB.tracksByCourse[t.course_id] = [];
+      const recY = Number(t.recommended_year) || null;
+      const recS = Number(t.recommended_sem) || null;
+      const existing = DB.tracksByCourse[t.course_id].find(x => x.trackId === t.track_id);
+      if (!existing) {
+        DB.tracksByCourse[t.course_id].push({
+          trackId: t.track_id,
+          trackName: tName,
+          isCommon,
+          recommendedYears: recY ? [recY] : [],
+          recommendedSems: recS ? [recS] : []
+        });
+      } else {
+        if (!isCommon) existing.isCommon = false;
+        if (recY && !existing.recommendedYears.includes(recY)) existing.recommendedYears.push(recY);
+        if (recS && !existing.recommendedSems.includes(recS)) existing.recommendedSems.push(recS);
+      }
+    }
+  });
+}
+
 function populateDBFromResults(results) {
   const [courses, conditions, tracks, studyPlans, rules, plos, cloMapping] = results;
 
@@ -661,6 +778,9 @@ async function loadCurriculumDatabase(currYear) {
       const cached = JSON.parse(cachedRaw);
       if (cached && Array.isArray(cached.results) && cached.results.length === SHEETS.length) {
         populateDBFromResults(cached.results);
+        if (cached.obeSpecs || cached.obeInstructors) {
+          applyObeLiveTermsOverlay(cached.obeSpecs || [], cached.obeInstructors || []);
+        }
         populateTrackDropdown();
         loadOrBuildState(currYear);
         loadingBox.style.display = 'none';
@@ -678,16 +798,24 @@ async function loadCurriculumDatabase(currYear) {
   }
 
   try {
-    const results = await Promise.all(SHEETS.map(s => fetchSheet(s, currYear)));
+    const [results, obeSpecs, obeInstructors] = await Promise.all([
+      Promise.all(SHEETS.map(s => fetchSheet(s, currYear))),
+      fetchObeMasterSheet('Course_Specs'),
+      fetchObeMasterSheet('Course_Instructors')
+    ]);
     populateDBFromResults(results);
+    applyObeLiveTermsOverlay(obeSpecs, obeInstructors);
     try {
-      localStorage.setItem(cacheKey, JSON.stringify({ results, updatedAt: Date.now() }));
+      localStorage.setItem(cacheKey, JSON.stringify({ results, obeSpecs, obeInstructors, updatedAt: Date.now() }));
     } catch (e) {}
 
     populateTrackDropdown();
     if (!renderedFromCache) {
       loadOrBuildState(currYear);
     } else {
+      if (reconcileSavedItemsWithLiveOfferedTerms(STATE.items)) {
+        saveState(currYear);
+      }
       syncControlsFromState();
     }
 
@@ -905,6 +1033,62 @@ function migrate2569Year3SlotSwap(items) {
   return migrated;
 }
 
+function reconcileSavedItemsWithLiveOfferedTerms(items) {
+  if (!Array.isArray(items)) return false;
+  let changed = false;
+
+  // ตรวจสอบช่องวิชาเอกเลือกที่เคยเลือกวิชาไว้แล้ว แต่ภาคการศึกษาที่เปิดสอนจริงเปลี่ยนไป (เช่น 209304 เปลี่ยนเป็นเปิดภาค 1 แต่อยู่ในช่องปี 3 เทอม 2)
+  const filledMajorSlots = items.filter(it =>
+    it.isPlaceholder &&
+    it.category === 'Major_Elective' &&
+    !isEmptyPlaceholder(it) &&
+    !it.isSplitChild
+  );
+
+  filledMajorSlots.forEach(slot => {
+    const cInfo = DB.courseMap[slot.courseId];
+    if (!cInfo) return;
+    const singleSem = deriveSingleSemesterFromOfferedTerms(cInfo.offered_terms);
+    if (!singleSem || slot.sem === singleSem) return;
+
+    // หาช่องว่างวิชาเอกเลือกในชั้นปีเดียวกันแต่ตรงกับภาคการศึกษาที่เปิดสอนจริง
+    const targetEmptySlot = items.find(other =>
+      other.uid !== slot.uid &&
+      other.isPlaceholder &&
+      other.category === 'Major_Elective' &&
+      isEmptyPlaceholder(other) &&
+      other.year === slot.year &&
+      other.sem === singleSem &&
+      other.credits === slot.credits
+    );
+
+    if (targetEmptySlot) {
+      // ย้ายวิชามายังช่องที่ตรงภาคการศึกษาจริง และคืนค่าช่องเดิมเป็นช่องว่าง
+      targetEmptySlot.courseId = slot.courseId;
+      targetEmptySlot.title = slot.title;
+      targetEmptySlot.credits = slot.credits;
+      targetEmptySlot.status = slot.status;
+      targetEmptySlot.trackNote = '';
+
+      const origInfo = DB.courseMap[slot.originalCourseId];
+      slot.courseId = slot.originalCourseId;
+      slot.title = origInfo ? origInfo.title_th : slot.originalTitle;
+      slot.status = 'planned';
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    const seqMap = getMajorElectiveSequenceMap();
+    items.forEach(it => {
+      if (isEmptyPlaceholder(it) && getCategoryGroup(it.category) === 'MajorElec') {
+        it.title = getDisplayTitleForItem(it, seqMap);
+      }
+    });
+  }
+  return changed;
+}
+
 function loadOrBuildState(currYear) {
   const targetYear = currYear === '2564' ? '2564' : '2569';
   const defaultPlan = targetYear === '2564' ? 'Plan1_Regular' : 'Regular';
@@ -927,7 +1111,14 @@ function loadOrBuildState(currYear) {
           if (it.isSplitChild === undefined) it.isSplitChild = false;
           if (it.isTrackOverflow === undefined) it.isTrackOverflow = false;
         });
+        let stateUpdated = false;
         if (targetYear === '2569' && migrate2569Year3SlotSwap(STATE.items)) {
+          stateUpdated = true;
+        }
+        if (reconcileSavedItemsWithLiveOfferedTerms(STATE.items)) {
+          stateUpdated = true;
+        }
+        if (stateUpdated) {
           saveState(targetYear);
         }
         syncControlsFromState();
@@ -1119,52 +1310,86 @@ function applySelectedTrack() {
     }
   };
 
+  const getEffectiveRecommendedSem = (tc) => {
+    const cInfo = DB.courseMap[tc.course_id];
+    if (cInfo) {
+      const singleSem = deriveSingleSemesterFromOfferedTerms(cInfo.offered_terms);
+      if (singleSem) return singleSem;
+    }
+    return Number(tc.recommended_sem) || null;
+  };
+
+  const isOfferedInSlotSem = (tc, slotSem) => {
+    const cInfo = DB.courseMap[tc.course_id];
+    if (!cInfo) return true;
+    return isCourseOfferedInSemester(cInfo, slotSem);
+  };
+
   const fillSlotsWithPool = (pool, allowCarryOverAndOverflow) => {
-    // รอบที่ 1: จับคู่ตรงทั้งชั้นปี (recommended_year) และภาคเรียน (recommended_sem)
-    // หากเทอมนั้นเต็มแล้ว ให้ขยับไปทดแทนในช่องว่างของเทอมถัดไป (Carry-Over) ก่อนสร้างช่องงอก
-    pool.forEach(tc => {
+    // กรองรายวิชาที่ตั้งค่าปิดการเรียนการสอนชั่วคราว (CLOSED) ไม่ให้ถูกดึงลงแผนอัตโนมัติ
+    const activePool = pool.filter(tc => {
+      const cInfo = DB.courseMap[tc.course_id];
+      if (!cInfo) return true;
+      const t = String(cInfo.offered_terms || '').trim().toUpperCase();
+      return t !== 'CLOSED' && t !== 'NONE';
+    });
+
+    // รอบที่ 1: จับคู่ตรงทั้งชั้นปี (recommended_year) และภาคเรียนที่เปิดสอนจริง (effectiveSem)
+    // หากเทอมนั้นเต็มแล้ว ให้ขยับไปทดแทนในช่องว่างของเทอมถัดไปที่เปิดสอนวิชานั้น (Carry-Over) ก่อนสร้างช่องงอก
+    activePool.forEach(tc => {
       if (usedIds.has(tc.course_id)) return;
       const recY = Number(tc.recommended_year);
-      const recS = Number(tc.recommended_sem);
+      const recS = getEffectiveRecommendedSem(tc);
       if (!recY || !recS) return;
       const cr = getCourseCredits(tc);
-      const exactSlot = findBestSlot(s => s.year === recY && s.sem === recS, cr);
+      const exactSlot = findBestSlot(s => s.year === recY && s.sem === recS && isOfferedInSlotSem(tc, s.sem), cr);
       if (exactSlot) {
         assignToSlot(exactSlot, tc);
       } else if (allowCarryOverAndOverflow) {
         const recOrder = termOrder(recY, recS);
-        // 1.1) ทดแทนไปยังช่องว่างในเทอมถัดไปก่อน (ไม่สร้างช่องงอกเพิ่ม)
-        const nextTermSlot = findBestSlot(s => termOrder(s.year, s.sem) > recOrder, cr, true);
+        // 1.1) ทดแทนไปยังช่องว่างในเทอมถัดไปที่เปิดสอนวิชานี้ก่อน (ไม่สร้างช่องงอกเพิ่ม)
+        const nextTermSlot = findBestSlot(
+          s => termOrder(s.year, s.sem) > recOrder && isOfferedInSlotSem(tc, s.sem),
+          cr,
+          true
+        );
         if (nextTermSlot) {
           assignToSlot(nextTermSlot, tc);
           carriedOverCount++;
         } else {
-          // 1.2) หากไม่มีช่องว่างในเทอมถัดไปเลย ลองดูช่องว่างเทอมก่อนหน้า
-          const anyEmptySlot = findBestSlot(() => true, cr, true);
-          if (anyEmptySlot) {
-            assignToSlot(anyEmptySlot, tc);
+          // 1.2) หากไม่มีช่องว่างในเทอมถัดไป ลองดูช่องว่างเทอมก่อนหน้าที่ตรงกับภาคเรียนที่เปิดสอน
+          const anyValidSemSlot = findBestSlot(s => isOfferedInSlotSem(tc, s.sem), cr, true);
+          if (anyValidSemSlot) {
+            assignToSlot(anyValidSemSlot, tc);
             carriedOverCount++;
           } else {
-            // 1.3) หากช่องว่างตลอดทั้งแผนเต็มหมดแล้วจริงๆ จึงสร้างช่องงอกเพิ่ม (ยกเว้นปี 4 เทอม 2 แผนสหกิจศึกษา)
-            const isCoopBlockedTerm = isCoopPlanType(STATE.planType) && recY === 4 && recS === 2;
-            if (!isCoopBlockedTerm) {
-              usedIds.add(tc.course_id);
-              const ovItem = createTrackOverflowItem(recY, recS, tc, cr);
-              overflowItems.push(ovItem);
+            // 1.3) หากไม่มีช่องที่ตรงภาคเรียนว่างเลย จึงลองช่องว่างใดๆ หรือสร้างช่องงอกในเทอมที่เปิดสอนจริง
+            const anyEmptySlot = findBestSlot(() => true, cr, true);
+            if (anyEmptySlot) {
+              assignToSlot(anyEmptySlot, tc);
+              carriedOverCount++;
+            } else {
+              const isCoopBlockedTerm = isCoopPlanType(STATE.planType) && recY === 4 && recS === 2;
+              if (!isCoopBlockedTerm) {
+                usedIds.add(tc.course_id);
+                const ovItem = createTrackOverflowItem(recY, recS, tc, cr);
+                overflowItems.push(ovItem);
+              }
             }
           }
         }
       }
     });
 
-    // รอบที่ 2: จับคู่ตรงภาคเรียนที่แนะนำ (recommended_sem) หรือเทอมที่เปิดสอน (open_term_suggested)
-    pool.forEach(tc => {
+    // รอบที่ 2: จับคู่ตรงภาคเรียนที่เปิดสอนจริง (effectiveSem) หรือเทอมที่เปิดสอน (offered_terms)
+    activePool.forEach(tc => {
       if (usedIds.has(tc.course_id)) return;
-      const recS = Number(tc.recommended_sem);
+      const recS = getEffectiveRecommendedSem(tc);
       const cInfo = DB.courseMap[tc.course_id];
       const cr = getCourseCredits(tc);
       const slot = findBestSlot(s =>
-        recS === s.sem ||
+        (recS === s.sem && isOfferedInSlotSem(tc, s.sem)) ||
+        isOfferedInSlotSem(tc, s.sem) ||
         (cInfo && cInfo.open_term_suggested && cInfo.open_term_suggested.includes(`T${s.sem}`)),
         cr,
         true
@@ -1173,7 +1398,7 @@ function applySelectedTrack() {
     });
 
     // รอบที่ 3: เติมรายวิชาที่เหลือลงในช่องว่างที่ยังเหลือ
-    pool.forEach(tc => {
+    activePool.forEach(tc => {
       if (usedIds.has(tc.course_id)) return;
       const cr = getCourseCredits(tc);
       const slot = findBestSlot(() => true, cr, true);
