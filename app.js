@@ -59,7 +59,7 @@ function getStorageKey(currYear) {
 
 function getDbCacheKey(currYear) {
   const y = currYear || getActiveCurriculumYear();
-  return y === '2564' ? 'indchem2564_db_cache_v3' : 'indchem2569_db_cache_v3';
+  return y === '2564' ? 'indchem2564_db_cache_v4' : 'indchem2569_db_cache_v4';
 }
 
 function isCoopPlanType(planType) {
@@ -181,12 +181,24 @@ function formatCategoryTh(cat) {
   const map = {
     GE: 'วิชาศึกษาทั่วไป',
     GE_Required: 'วิชาศึกษาทั่วไป (บังคับ)',
-    GE_Elective: 'วิชาศึกษาทั่วไป (เลือก)',
-    GE_Learner: 'วิชาศึกษาทั่วไป (Learner Person)',
-    GE_CoCreator: 'วิชาศึกษาทั่วไป (Innovative Co-creator)',
-    GE_ActiveCitizen: 'วิชาศึกษาทั่วไป (Active Citizen)',
+    GE_Elective: 'วิชาศึกษาทั่วไป (วิชาเลือก)',
+    GE_Language: 'ศึกษาทั่วไป: กลุ่มทักษะทางการสื่อสารและภาษา (Language Literacy)',
+    GE_Digital: 'ศึกษาทั่วไป: กลุ่มทักษะความเข้าใจและการใช้เทคโนโลยีดิจิทัล (Digital Literacy)',
+    GE_Global: 'ศึกษาทั่วไป: กลุ่มทักษะการเป็นพลเมืองโลก (Global Citizen)',
+    GE_Creativity: 'ศึกษาทั่วไป: กลุ่มทักษะการคิดสร้างสรรค์และนวัตกรรม (Creativity & Innovation)',
+    GE_Entrepreneur: 'ศึกษาทั่วไป: กลุ่มทักษะการเป็นผู้ประกอบการ (Entrepreneurial Skills)',
+    GE_Elective_Digital: 'ศึกษาทั่วไป (เลือก): กลุ่มทักษะเทคโนโลยีดิจิทัล (Digital Literacy)',
+    GE_Elective_Global: 'ศึกษาทั่วไป (เลือก): กลุ่มทักษะการเป็นพลเมืองโลก (Global Citizen)',
+    GE_Elective_AI: 'ศึกษาทั่วไป (เลือก): กลุ่มทักษะการประยุกต์ใช้ปัญญาประดิษฐ์ (AI)',
+    GE_Learner: 'ศึกษาทั่วไป: กลุ่มทักษะการเป็นผู้เรียนรู้ (Learner Person)',
+    GE_CoCreator: 'ศึกษาทั่วไป: กลุ่มทักษะการเป็นผู้ร่วมสร้างสรรค์นวัตกรรม (Innovative Co-creator)',
+    GE_ActiveCitizen: 'ศึกษาทั่วไป: กลุ่มทักษะการเป็นพลเมืองที่เข้มแข็ง (Active Citizen)',
+    GE_Elective_Learner: 'ศึกษาทั่วไป (เลือก): กลุ่มผู้เรียนรู้ (Learner Person)',
+    GE_Elective_CoCreator: 'ศึกษาทั่วไป (เลือก): กลุ่มผู้ร่วมสร้างสรรค์นวัตกรรม (Innovative Co-creator)',
+    GE_Elective_ActiveCitizen: 'ศึกษาทั่วไป (เลือก): กลุ่มพลเมืองที่เข้มแข็ง (Active Citizen)',
     Core: 'วิชาแกนวิทยาศาสตร์',
     Core_Science: 'วิชาแกนวิทยาศาสตร์',
+    Core_BasicSci: 'วิชาแกนวิทยาศาสตร์',
     Core_Required: 'วิชาแกนวิทยาศาสตร์',
     Major_Required: 'วิชาเอกบังคับ',
     Major_Elective_Req_P1: 'วิชาเอกบังคับเลือก (แผน 1 เคมีอุตสาหกรรม)',
@@ -201,6 +213,49 @@ function formatCategoryTh(cat) {
   if (cat.startsWith('Core')) return 'วิชาแกนวิทยาศาสตร์';
   if (cat.startsWith('Major_Elective_Req')) return 'วิชาเอกบังคับเลือกตามแผน';
   return cat;
+}
+
+function formatGeBadgeShortTh(cat) {
+  const map = {
+    GE_Language: 'กลุ่มทักษะภาษาและการสื่อสาร (Language Literacy)',
+    GE_Digital: 'กลุ่มเทคโนโลยีดิจิทัล (Digital Literacy)',
+    GE_Global: 'กลุ่มพลเมืองโลก (Global Citizen)',
+    GE_Creativity: 'กลุ่มคิดสร้างสรรค์และนวัตกรรม (Creativity & Innovation)',
+    GE_Entrepreneur: 'กลุ่มทักษะผู้ประกอบการ (Entrepreneurial Skills)',
+    GE_Elective_Digital: 'กลุ่มเลือก: เทคโนโลยีดิจิทัล (Digital Literacy)',
+    GE_Elective_Global: 'กลุ่มเลือก: พลเมืองโลก (Global Citizen)',
+    GE_Elective_AI: 'กลุ่มเลือก: ปัญญาประดิษฐ์ (Artificial Intelligence)',
+    GE_Learner: 'กลุ่มผู้เรียนรู้ (Learner Person)',
+    GE_CoCreator: 'กลุ่มผู้ร่วมสร้างสรรค์นวัตกรรม (Innovative Co-creator)',
+    GE_ActiveCitizen: 'กลุ่มพลเมืองที่เข้มแข็ง (Active Citizen)',
+    GE_Elective_Learner: 'กลุ่มผู้เรียนรู้ (Learner Person)',
+    GE_Elective_CoCreator: 'กลุ่มผู้ร่วมสร้างสรรค์นวัตกรรม (Innovative Co-creator)',
+    GE_Elective_ActiveCitizen: 'กลุ่มพลเมืองที่เข้มแข็ง (Active Citizen)',
+    GE_Elective: 'วิชาศึกษาทั่วไป (เลือก)'
+  };
+  return map[cat] || formatCategoryTh(cat);
+}
+
+function getGeSlotBadgeLabel(item) {
+  if (!item) return 'เลือกศึกษาทั่วไป (GE)';
+  const origId = String(item.originalCourseId || item.courseId || '').toUpperCase();
+  const cat = String(item.category || '');
+  if (origId === 'GE_LANG_1' || origId === 'GE_LANG_2' || origId === 'GE_LANG_3' || cat === 'GE_Language') {
+    return 'เลือก GE: กลุ่มภาษาและการสื่อสาร';
+  }
+  if (origId === 'GE_CREATE_1' || cat === 'GE_Creativity') {
+    return 'เลือก GE: กลุ่มคิดสร้างสรรค์และนวัตกรรม';
+  }
+  if (origId === 'GE_ENTRE_1' || cat === 'GE_Entrepreneur') {
+    return 'เลือก GE: กลุ่มทักษะผู้ประกอบการ';
+  }
+  if (origId === 'GE_ELEC_1' || (cat === 'GE_Elective' && getActiveCurriculumYear() === '2569')) {
+    return 'เลือก GE: ดิจิทัล / พลเมืองโลก / AI';
+  }
+  if (origId === 'GE_ELEC' || (cat === 'GE_Elective' && getActiveCurriculumYear() === '2564')) {
+    return 'เลือก GE: 3 กลุ่ม (Learner / Co-creator / Active Citizen)';
+  }
+  return 'เลือกศึกษาทั่วไป (GE)';
 }
 
 function formatTermsTh(termStr) {
@@ -1826,7 +1881,7 @@ function renderRoadmap() {
           } else if (catGroup === 'MajorElec') {
             elecBadge = `<span class="tag tag-elec-major">วิชาเอกเลือก${seqNum ? `ตัวที่ ${seqNum}` : ''}</span>`;
           } else if (item.isPlaceholder) {
-            if (catGroup === 'GE') elecBadge = '<span class="tag tag-elec-ge">เลือกศึกษาทั่วไป (GE)</span>';
+            if (catGroup === 'GE') elecBadge = `<span class="tag tag-elec-ge">${escapeHtml(getGeSlotBadgeLabel(item))}</span>`;
             else if (catGroup === 'Free') elecBadge = '<span class="tag tag-elec-free">วิชาเลือกเสรี</span>';
             else elecBadge = '<span class="tag tag-elec">ช่องวิชาเลือก</span>';
           } else if (catGroup === 'Minor') {
@@ -2114,14 +2169,87 @@ function updatePickerTermControls() {
   }
 }
 
+function getGePickerGroupSpec(slot) {
+  const is64 = getActiveCurriculumYear() === '2564';
+  const origId = String(slot?.originalCourseId || slot?.courseId || '').toUpperCase();
+  const cat = String(slot?.category || '');
+
+  if (!is64) {
+    if (origId === 'GE_LANG_1') {
+      return {
+        defaultFilter: 'GE_LANG_SLOT_1',
+        groupTitle: 'กลุ่มวิชาด้านทักษะทางการสื่อสารและภาษา (Language Literacy) — ตัวที่ 1',
+        ruleDesc: 'กรณีผลสอบ e-Pro ไม่ถึงระดับ B1 ให้เลือก 001101 (ภาษาอังกฤษพื้นฐาน 1) | กรณีตั้งแต่ระดับ B1 ขึ้นไป ให้เลือก 001225 (ภาษาอังกฤษในบริบทวิทยาศาสตร์และเทคโนโลยี)',
+        recommendedIds: ['001101', '001225']
+      };
+    }
+    if (origId === 'GE_LANG_2') {
+      return {
+        defaultFilter: 'GE_LANG_SLOT_2',
+        groupTitle: 'กลุ่มวิชาด้านทักษะทางการสื่อสารและภาษา (Language Literacy) — ตัวที่ 2',
+        ruleDesc: 'กรณีผลสอบ e-Pro ไม่ถึงระดับ B1 ให้เลือก 001102 (ภาษาอังกฤษพื้นฐาน 2) | กรณีตั้งแต่ระดับ B1 ขึ้นไป ให้เลือก 1 วิชาจาก 001201, 001233, 001241, 001242, 001243',
+        recommendedIds: ['001102', '001201', '001233', '001241', '001242', '001243']
+      };
+    }
+    if (origId === 'GE_LANG_3' || cat === 'GE_Language') {
+      return {
+        defaultFilter: 'GE_LANG_SLOT_3',
+        groupTitle: 'กลุ่มวิชาด้านทักษะทางการสื่อสารและภาษา (Language Literacy) — ตัวที่ 3',
+        ruleDesc: 'กรณีผลสอบ e-Pro ไม่ถึงระดับ B1 ให้เลือก 001225 (ภาษาอังกฤษในบริบทวิทยาศาสตร์และเทคโนโลยี) | กรณีตั้งแต่ระดับ B1 ขึ้นไป ให้เลือกอีก 1 วิชาจาก 001201, 001233, 001241, 001242, 001243',
+        recommendedIds: ['001225', '001201', '001233', '001241', '001242', '001243']
+      };
+    }
+    if (origId === 'GE_CREATE_1' || cat === 'GE_Creativity') {
+      return {
+        defaultFilter: 'GE_Creativity',
+        groupTitle: '(1.1.4) กลุ่มวิชาด้านทักษะการคิดสร้างสรรค์และนวัตกรรม (Creativity and Innovation)',
+        ruleDesc: 'เลือกเรียน 3 หน่วยกิต (1 กระบวนวิชา) จากรายชื่อวิชาในกลุ่มทักษะการคิดสร้างสรรค์และนวัตกรรมตามเล่มหลักสูตร 2569 (8 วิชา)',
+        recommendedIds: []
+      };
+    }
+    if (origId === 'GE_ENTRE_1' || cat === 'GE_Entrepreneur') {
+      return {
+        defaultFilter: 'GE_Entrepreneur',
+        groupTitle: '(1.1.5) กลุ่มวิชาด้านทักษะการเป็นผู้ประกอบการ (Entrepreneurial Skills)',
+        ruleDesc: 'เลือกเรียน 3 หน่วยกิต (1 กระบวนวิชา) จากรายชื่อวิชาในกลุ่มทักษะการเป็นผู้ประกอบการตามเล่มหลักสูตร 2569 (10 วิชา)',
+        recommendedIds: []
+      };
+    }
+    return {
+      defaultFilter: 'GE_ELEC_69_ALL',
+      groupTitle: '(1.2.1) วิชาศึกษาทั่วไปเลือก (Digital Literacy / Global Citizen / Artificial Intelligence)',
+      ruleDesc: 'เลือกเรียน 3 หน่วยกิต (1 กระบวนวิชา) จาก 3 กลุ่มวิชาเลือกในเล่มหลักสูตร 2569 ได้แก่ กลุ่มเทคโนโลยีดิจิทัล (5 วิชา), กลุ่มพลเมืองโลก (16 วิชา) หรือ กลุ่มปัญญาประดิษฐ์ AI (3 วิชา)',
+      recommendedIds: []
+    };
+  }
+
+  return {
+    defaultFilter: 'GE_ELEC_64_ALL',
+    groupTitle: '(1.2) วิชาศึกษาทั่วไปเลือก 6 หน่วยกิต (เลือกจาก 3 กลุ่มวิชาตามเล่มหลักสูตร 2564)',
+    ruleDesc: 'เลือกเรียนกระบวนวิชาศึกษาทั่วไปเลือกจาก 3 กลุ่มวิชาในเล่มหลักสูตร 2564 ได้แก่ (1.2.1) กลุ่มผู้เรียนรู้ Learner Person (3 วิชา), (1.2.2) กลุ่มผู้ร่วมสร้างสรรค์นวัตกรรม Innovative Co-creator (5 วิชา) และ (1.2.3) กลุ่มพลเมืองที่เข้มแข็ง Active Citizen (1 วิชา)',
+    recommendedIds: []
+  };
+}
+
 function openPickerForSlot(uid) {
   const slot = STATE.items.find(i => i.uid === uid);
   if (!slot) return;
   const seqMap = getMajorElectiveSequenceMap();
   const displayTitle = getDisplayTitleForItem(slot, seqMap);
-  PICKER_CTX = { mode: 'replace', uid, year: slot.year, sem: slot.sem, category: slot.category };
+  const slotGroup = getCategoryGroup(slot.category);
+  const geSpec = slotGroup === 'GE' ? getGePickerGroupSpec(slot) : null;
+  PICKER_CTX = {
+    mode: 'replace',
+    uid,
+    year: slot.year,
+    sem: slot.sem,
+    category: slot.category,
+    originalCourseId: slot.originalCourseId,
+    placeholderRule: slot.placeholderRule,
+    geSpec
+  };
   document.getElementById('pickerTitle').textContent = `เลือกวิชาสำหรับช่อง: ${displayTitle} (ชั้นปีที่ ${slot.year} ${slot.sem === 3 ? 'ภาคฤดูร้อน' : 'ภาคการศึกษาที่ ' + slot.sem} | ${slot.credits} หน่วยกิต)`;
-  setupPickerFilters(slot.category === 'Major_Elective');
+  setupPickerFilters(slot.category === 'Major_Elective', geSpec);
   updatePickerTermControls();
   document.getElementById('customAddBox').style.display = 'none';
   document.getElementById('pickerModal').classList.add('open');
@@ -2129,18 +2257,61 @@ function openPickerForSlot(uid) {
 }
 
 function openPickerToAdd(year, sem) {
-  PICKER_CTX = { mode: 'add', uid: null, year, sem, category: 'ALL' };
+  PICKER_CTX = { mode: 'add', uid: null, year, sem, category: 'ALL', geSpec: null };
   document.getElementById('pickerTitle').textContent = `เพิ่มรายวิชาใน ชั้นปีที่ ${year} ${sem === 3 ? 'ภาคฤดูร้อน' : 'ภาคการศึกษาที่ ' + sem}`;
-  setupPickerFilters(true);
+  setupPickerFilters(true, null);
   updatePickerTermControls();
   document.getElementById('customAddBox').style.display = 'block';
   document.getElementById('pickerModal').classList.add('open');
   renderPickerList();
 }
 
-function setupPickerFilters(showTracks) {
+function setupPickerFilters(showTracks, geSpec = null) {
   document.getElementById('pickerSearch').value = '';
   const sel = document.getElementById('pickerTrackFilter');
+
+  if (geSpec) {
+    const is64 = getActiveCurriculumYear() === '2564';
+    let opts = '';
+    if (!is64) {
+      opts += '<optgroup label="กลุ่มวิชาตามช่องที่เลือก (หลักสูตร 2569)">';
+      if (geSpec.defaultFilter === 'GE_LANG_SLOT_1') {
+        opts += '<option value="GE_LANG_SLOT_1">กลุ่มภาษาอังกฤษสำหรับช่องที่ 1 (001101 / 001225)</option>';
+      } else if (geSpec.defaultFilter === 'GE_LANG_SLOT_2') {
+        opts += '<option value="GE_LANG_SLOT_2">กลุ่มภาษาอังกฤษสำหรับช่องที่ 2 (001102 หรือวิชาเลือก B1+)</option>';
+      } else if (geSpec.defaultFilter === 'GE_LANG_SLOT_3') {
+        opts += '<option value="GE_LANG_SLOT_3">กลุ่มภาษาอังกฤษสำหรับช่องที่ 3 (001225 หรือวิชาเลือก B1+)</option>';
+      }
+      opts += '<option value="GE_Language">(1.1.1) กลุ่มทักษะทางการสื่อสารและภาษา (Language Literacy — ทั้งหมด 8 วิชา)</option>';
+      opts += '<option value="GE_Creativity">(1.1.4) กลุ่มทักษะการคิดสร้างสรรค์และนวัตกรรม (Creativity & Innovation — 8 วิชา)</option>';
+      opts += '<option value="GE_Entrepreneur">(1.1.5) กลุ่มทักษะการเป็นผู้ประกอบการ (Entrepreneurial Skills — 10 วิชา)</option>';
+      opts += '<option value="GE_ELEC_69_ALL">(1.2.1) วิชาศึกษาทั่วไปเลือก รวมทั้ง 3 กลุ่มย่อย (Digital / Global / AI — 24 วิชา)</option>';
+      opts += '</optgroup>';
+      opts += '<optgroup label="แยกตามกลุ่มย่อยของวิชาศึกษาทั่วไปเลือก (1.2.1)">';
+      opts += '<option value="GE_Elective_Digital">• กลุ่มทักษะความเข้าใจและการใช้เทคโนโลยีดิจิทัล (Digital Literacy — 5 วิชา)</option>';
+      opts += '<option value="GE_Elective_Global">• กลุ่มทักษะการเป็นพลเมืองโลก (Global Citizen — 16 วิชา)</option>';
+      opts += '<option value="GE_Elective_AI">• กลุ่มทักษะการประยุกต์ใช้ปัญญาประดิษฐ์ (Artificial Intelligence — 3 วิชา)</option>';
+      opts += '</optgroup>';
+      opts += '<optgroup label="ทั้งหมดในหมวดศึกษาทั่วไป">';
+      opts += '<option value="ALL_GE">แสดงวิชาศึกษาทั่วไปทุกกลุ่มในหลักสูตร 2569</option>';
+      opts += '</optgroup>';
+    } else {
+      opts += '<optgroup label="กลุ่มวิชาศึกษาทั่วไปเลือก (หลักสูตร 2564)">';
+      opts += '<option value="GE_ELEC_64_ALL">(1.2) วิชาศึกษาทั่วไปเลือก รวมทั้ง 3 กลุ่มวิชา (9 วิชาตามเล่มหลักสูตร)</option>';
+      opts += '<option value="GE_Elective_Learner">• (1.2.1) กลุ่มพัฒนาทักษะการเป็นผู้เรียนรู้ (Learner Person — 3 วิชา)</option>';
+      opts += '<option value="GE_Elective_CoCreator">• (1.2.2) กลุ่มพัฒนาทักษะการเป็นผู้ร่วมสร้างสรรค์นวัตกรรม (Innovative Co-creator — 5 วิชา)</option>';
+      opts += '<option value="GE_Elective_ActiveCitizen">• (1.2.3) กลุ่มพัฒนาทักษะการเป็นพลเมืองที่เข้มแข็ง (Active Citizen — 1 วิชา)</option>';
+      opts += '</optgroup>';
+      opts += '<optgroup label="ทั้งหมดในหมวดศึกษาทั่วไป">';
+      opts += '<option value="ALL_GE">แสดงวิชาศึกษาทั่วไปทุกกลุ่มในหลักสูตร 2564 (รวมวิชาบังคับ)</option>';
+      opts += '</optgroup>';
+    }
+    sel.innerHTML = opts;
+    sel.value = geSpec.defaultFilter || 'ALL_GE';
+    sel.style.display = 'inline-block';
+    return;
+  }
+
   let opts = '<option value="ALL">แสดงทุกวิชาที่เกี่ยวข้อง</option>';
   if (showTracks) {
     const trackEntries = Object.entries(DB.trackNames);
@@ -2169,8 +2340,9 @@ function renderPickerList() {
   const allTrackCourseIds = new Set(DB.tracks.map(t => t.course_id).filter(Boolean));
   const targetYear = Number(PICKER_CTX.year) || 3;
   const targetSem = Number(PICKER_CTX.sem) || 1;
+  const isGeSlot = PICKER_CTX.mode === 'replace' && getCategoryGroup(PICKER_CTX.category) === 'GE';
 
-  let list = [...DB.courses];
+  let list = [...DB.courses].filter(c => !['FREE_ELEC', 'GE_ELEC', 'MAJOR_ELEC'].includes(c.course_id));
 
   if (PICKER_CTX.mode === 'replace') {
     const slotGroup = getCategoryGroup(PICKER_CTX.category);
@@ -2182,20 +2354,39 @@ function renderPickerList() {
   }
 
   let selectedTrackCommonMap = null;
-  if (trackFilter === '209_GENERAL') {
-    list = list.filter(c => c.course_id.startsWith('209') && !allTrackCourseIds.has(c.course_id));
-  } else if (trackFilter === 'NON_209') {
-    list = list.filter(c => !c.course_id.startsWith('209'));
-  } else if (trackFilter && trackFilter !== 'ALL') {
-    const trackRows = DB.tracks.filter(t => t.track_id === trackFilter && t.course_id);
-    selectedTrackCommonMap = {};
-    trackRows.forEach(t => {
-      const isCommon = isCommonOptionRow(t);
-      if (selectedTrackCommonMap[t.course_id] === undefined || !isCommon) {
-        selectedTrackCommonMap[t.course_id] = isCommon;
-      }
-    });
-    list = list.filter(c => selectedTrackCommonMap[c.course_id] !== undefined);
+  if (isGeSlot) {
+    if (trackFilter === 'GE_LANG_SLOT_1') {
+      const allowed = new Set(['001101', '001225']);
+      list = list.filter(c => allowed.has(c.course_id));
+    } else if (trackFilter === 'GE_LANG_SLOT_2') {
+      const allowed = new Set(['001102', '001201', '001233', '001241', '001242', '001243']);
+      list = list.filter(c => allowed.has(c.course_id));
+    } else if (trackFilter === 'GE_LANG_SLOT_3') {
+      const allowed = new Set(['001225', '001201', '001233', '001241', '001242', '001243']);
+      list = list.filter(c => allowed.has(c.course_id));
+    } else if (trackFilter === 'GE_ELEC_69_ALL') {
+      list = list.filter(c => ['GE_Elective_Digital', 'GE_Elective_Global', 'GE_Elective_AI', 'GE_Elective'].includes(c.course_category));
+    } else if (trackFilter === 'GE_ELEC_64_ALL') {
+      list = list.filter(c => ['GE_Elective_Learner', 'GE_Elective_CoCreator', 'GE_Elective_ActiveCitizen', 'GE_Elective'].includes(c.course_category));
+    } else if (trackFilter && trackFilter !== 'ALL_GE' && trackFilter !== 'ALL') {
+      list = list.filter(c => c.course_category === trackFilter);
+    }
+  } else {
+    if (trackFilter === '209_GENERAL') {
+      list = list.filter(c => c.course_id.startsWith('209') && !allTrackCourseIds.has(c.course_id));
+    } else if (trackFilter === 'NON_209') {
+      list = list.filter(c => !c.course_id.startsWith('209'));
+    } else if (trackFilter && trackFilter !== 'ALL') {
+      const trackRows = DB.tracks.filter(t => t.track_id === trackFilter && t.course_id);
+      selectedTrackCommonMap = {};
+      trackRows.forEach(t => {
+        const isCommon = isCommonOptionRow(t);
+        if (selectedTrackCommonMap[t.course_id] === undefined || !isCommon) {
+          selectedTrackCommonMap[t.course_id] = isCommon;
+        }
+      });
+      list = list.filter(c => selectedTrackCommonMap[c.course_id] !== undefined);
+    }
   }
 
   // 1) ซ่อนรายวิชาที่ตั้งค่าปิดการเรียนการสอนชั่วคราว (CLOSED) เสมอเมื่อยังไม่ติ๊กแสดงทุกภาคการศึกษา
@@ -2218,12 +2409,30 @@ function renderPickerList() {
       (c.title_en || '').toLowerCase().includes(q) ||
       (c.description_full_th || '').toLowerCase().includes(q) ||
       (c.description_full_en || '').toLowerCase().includes(q) ||
-      (c.description_summary_th || '').toLowerCase().includes(q)
+      (c.description_summary_th || '').toLowerCase().includes(q) ||
+      formatCategoryTh(c.course_category).toLowerCase().includes(q)
     );
   }
 
-  // 2) เรียงลำดับโดยนำรายวิชาที่ชั้นปีแนะนำตรงกับชั้นปีของช่องที่กำลังเลือกขึ้นไว้ด้านบนสุดก่อน
-  // ตามด้วยรายวิชาของชั้นปีอื่น และวิชาที่ยังไม่ระบุชั้นปี
+  // 3) เรียงลำดับรายวิชา
+  const geCategoryOrder = {
+    GE_Language: 1,
+    GE_Creativity: 2,
+    GE_Entrepreneur: 3,
+    GE_Elective_Digital: 4,
+    GE_Elective_Global: 5,
+    GE_Elective_AI: 6,
+    GE_Elective_Learner: 7,
+    GE_Elective_CoCreator: 8,
+    GE_Elective_ActiveCitizen: 9,
+    GE_Learner: 10,
+    GE_CoCreator: 11,
+    GE_ActiveCitizen: 12,
+    GE_Digital: 13,
+    GE_Global: 14,
+    GE_Elective: 15
+  };
+
   const getYearSortRank = (course) => {
     const recYears = getCourseRecommendedYears(course, trackFilter);
     if (recYears.length === 0) return { tier: 2, dist: 99, minYear: 99 };
@@ -2233,6 +2442,13 @@ function renderPickerList() {
   };
 
   list.sort((a, b) => {
+    if (isGeSlot) {
+      const catA = geCategoryOrder[a.course_category] || 99;
+      const catB = geCategoryOrder[b.course_category] || 99;
+      if (catA !== catB) return catA - catB;
+      return a.course_id.localeCompare(b.course_id);
+    }
+
     const rA = getYearSortRank(a);
     const rB = getYearSortRank(b);
     if (rA.tier !== rB.tier) return rA.tier - rB.tier;
@@ -2251,17 +2467,46 @@ function renderPickerList() {
   });
 
   const body = document.getElementById('pickerBody');
+  let headerBannerHtml = '';
+  if (isGeSlot && PICKER_CTX.geSpec) {
+    headerBannerHtml = `
+      <div style="background:linear-gradient(90deg,#eff6ff 0%,#f5f3ff 100%);border:1px solid #bfdbfe;border-left:4px solid #2563eb;border-radius:10px;padding:10px 14px;margin-bottom:12px;">
+        <div style="font-weight:700;font-size:0.92rem;color:#1e3a8a;margin-bottom:3px;">
+          📚 ${escapeHtml(PICKER_CTX.geSpec.groupTitle)} (พบ ${list.length} กระบวนวิชา)
+        </div>
+        <div style="font-size:0.83rem;color:#334155;line-height:1.45;">
+          ${escapeHtml(PICKER_CTX.geSpec.ruleDesc)}
+        </div>
+      </div>
+    `;
+  }
+
   if (list.length === 0) {
-    body.innerHTML = `<p style="text-align:center;color:var(--muted);padding:20px;">ไม่พบรายวิชาที่เปิดสอนในภาคการศึกษานี้ หรือตรงกับคำค้นหา<br><small>คุณสามารถติ๊กช่อง <strong>"แสดงวิชาทุกภาคการศึกษา"</strong> ด้านบนเพื่อดูรายวิชาทั้งหมดได้ครับ</small></p>`;
+    body.innerHTML = headerBannerHtml + `<p style="text-align:center;color:var(--muted);padding:20px;">ไม่พบรายวิชาที่เปิดสอนในภาคการศึกษานี้ หรือตรงกับคำค้นหา<br><small>คุณสามารถติ๊กช่อง <strong>"แสดงวิชาทุกภาคการศึกษา"</strong> หรือเปลี่ยนตัวกรองกลุ่มวิชาด้านบนเพื่อดูรายวิชาทั้งหมดได้ครับ</small></p>`;
     return;
   }
 
-  body.innerHTML = list.map(c => {
+  let lastGeCatHeader = null;
+  const showGeSectionHeaders = isGeSlot && ['GE_ELEC_69_ALL', 'GE_ELEC_64_ALL', 'ALL_GE'].includes(trackFilter);
+
+  const itemsHtml = list.map(c => {
+    let sectionHeaderHtml = '';
+    if (showGeSectionHeaders && c.course_category !== lastGeCatHeader) {
+      lastGeCatHeader = c.course_category;
+      const catCount = list.filter(x => x.course_category === c.course_category).length;
+      sectionHeaderHtml = `
+        <div style="font-weight:700;font-size:0.86rem;color:#4c1d95;background:#f3e8ff;border:1px solid #d8b4fe;border-radius:8px;padding:7px 12px;margin:10px 0 6px 0;display:flex;justify-content:space-between;align-items:center;">
+          <span>🔹 ${escapeHtml(formatCategoryTh(c.course_category))}</span>
+          <span style="font-size:0.78rem;background:#ffffff;color:#6b21a8;padding:2px 8px;border-radius:999px;">${catCount} วิชา</span>
+        </div>
+      `;
+    }
+
     const alreadyIn = activeIds.has(c.course_id);
     const recYears = getCourseRecommendedYears(c, trackFilter);
     const isMatchedYear = recYears.includes(targetYear);
     let yearBadge = '';
-    if (recYears.length > 0) {
+    if (!isGeSlot && recYears.length > 0) {
       yearBadge = `<span class="tag ${isMatchedYear ? 'tag-year-match' : 'tag-year-other'}">แนะนำปี ${escapeHtml(recYears.join('/'))}</span>`;
     }
 
@@ -2276,7 +2521,9 @@ function renderPickerList() {
 
     const courseTracks = DB.tracksByCourse[c.course_id] || [];
     let groupBadge = '';
-    if (courseTracks.length > 0) {
+    if (getCategoryGroup(c.course_category) === 'GE') {
+      groupBadge = `<span class="tag tag-elec-ge">${escapeHtml(formatGeBadgeShortTh(c.course_category))}</span>`;
+    } else if (courseTracks.length > 0) {
       groupBadge = courseTracks.map(t =>
         t.isCommon
           ? `<span class="tag tag-elec-free">${escapeHtml(t.trackName)} (ตัวเลือกร่วม)</span>`
@@ -2309,14 +2556,14 @@ function renderPickerList() {
         <details style="margin-top:4px;font-size:0.78rem;color:var(--muted);">
           <summary style="cursor:pointer;color:var(--primary);font-weight:600;user-select:none;">ดูคำอธิบายรายวิชา (TH / EN)</summary>
           <div class="picker-item-desc">
-            ${descTh ? `<div><strong>TH:</strong> ${escapeHtml(descTh)}</div>` : ''}
+            ${descTh ? `<div><strong>TH:</strong> ${escapeHtml(c.description_full_th || descTh)}</div>` : ''}
             ${descEn ? `<div style="margin-top:${descTh ? '4px' : '0'};"><strong>EN:</strong> ${escapeHtml(descEn)}</div>` : ''}
           </div>
         </details>
       `;
     }
 
-    return `
+    return sectionHeaderHtml + `
       <div class="picker-item">
         <div style="flex:1;min-width:0;">
           <div style="font-weight:700;font-size:0.9rem;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
@@ -2326,7 +2573,7 @@ function renderPickerList() {
             ${groupBadge}
           </div>
           ${c.title_en ? `<div style="font-size:0.78rem;color:var(--muted);">${escapeHtml(c.title_en)}</div>` : ''}
-          <div style="font-size:0.8rem;color:var(--muted);margin-top:2px;">${escapeHtml(c.credits)} หน่วยกิต | หมวด: ${escapeHtml(formatCategoryTh(c.course_category))}</div>
+          <div style="font-size:0.8rem;color:var(--muted);margin-top:2px;">${escapeHtml(c.credits)} หน่วยกิต (${escapeHtml(c.lecture_hours || 3)}-${escapeHtml(c.lab_hours || 0)}-${escapeHtml(c.self_study_hours || 6)}) | หมวด: ${escapeHtml(formatCategoryTh(c.course_category))}</div>
           ${condHtml}
           ${descHtml}
         </div>
@@ -2336,6 +2583,8 @@ function renderPickerList() {
       </div>
     `;
   }).join('');
+
+  body.innerHTML = headerBannerHtml + itemsHtml;
 }
 
 function clearSlotCourse(uid, fromModal = false) {
