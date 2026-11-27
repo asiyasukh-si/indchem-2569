@@ -59,7 +59,7 @@ function getStorageKey(currYear) {
 
 function getDbCacheKey(currYear) {
   const y = currYear || getActiveCurriculumYear();
-  return y === '2564' ? 'indchem2564_db_cache_v4' : 'indchem2569_db_cache_v4';
+  return y === '2564' ? 'indchem2564_db_cache_v5' : 'indchem2569_db_cache_v5';
 }
 
 function isCoopPlanType(planType) {
@@ -628,7 +628,7 @@ function parseCSV(text) {
 
 async function fetchSheet(sheetName, currYear) {
   const ssId = (currYear || getActiveCurriculumYear()) === '2564' ? SPREADSHEET_ID_2564 : SPREADSHEET_ID_2569;
-  const url = `https://docs.google.com/spreadsheets/d/${ssId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+  const url = `https://docs.google.com/spreadsheets/d/${ssId}/gviz/tq?tqx=out:csv&headers=1&sheet=${encodeURIComponent(sheetName)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`ไม่สามารถอ่านชีต ${sheetName} ได้ (HTTP ${res.status})`);
   const text = await res.text();
@@ -637,7 +637,7 @@ async function fetchSheet(sheetName, currYear) {
 
 async function fetchObeMasterSheet(sheetName) {
   try {
-    const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID_OBE_MASTER}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+    const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID_OBE_MASTER}/gviz/tq?tqx=out:csv&headers=1&sheet=${encodeURIComponent(sheetName)}`;
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) return [];
     const text = await res.text();
@@ -2218,7 +2218,7 @@ function getGePickerGroupSpec(slot) {
     return {
       defaultFilter: 'GE_ELEC_69_ALL',
       groupTitle: '(1.2.1) วิชาศึกษาทั่วไปเลือก (Digital Literacy / Global Citizen / Artificial Intelligence)',
-      ruleDesc: 'เลือกเรียน 3 หน่วยกิต (1 กระบวนวิชา) จาก 3 กลุ่มวิชาเลือกในเล่มหลักสูตร 2569 ได้แก่ กลุ่มเทคโนโลยีดิจิทัล (5 วิชา), กลุ่มพลเมืองโลก (16 วิชา) หรือ กลุ่มปัญญาประดิษฐ์ AI (3 วิชา)',
+      ruleDesc: 'เลือกเรียน 3 หน่วยกิต (1 กระบวนวิชา) จาก 3 กลุ่มวิชาเลือกในเล่มหลักสูตร 2569 ได้แก่ กลุ่มเทคโนโลยีดิจิทัล (5 วิชา), กลุ่มพลเมืองโลก (17 วิชา) หรือ กลุ่มปัญญาประดิษฐ์ AI (3 วิชา)',
       recommendedIds: []
     };
   }
@@ -2285,11 +2285,11 @@ function setupPickerFilters(showTracks, geSpec = null) {
       opts += '<option value="GE_Language">(1.1.1) กลุ่มทักษะทางการสื่อสารและภาษา (Language Literacy — ทั้งหมด 8 วิชา)</option>';
       opts += '<option value="GE_Creativity">(1.1.4) กลุ่มทักษะการคิดสร้างสรรค์และนวัตกรรม (Creativity & Innovation — 8 วิชา)</option>';
       opts += '<option value="GE_Entrepreneur">(1.1.5) กลุ่มทักษะการเป็นผู้ประกอบการ (Entrepreneurial Skills — 10 วิชา)</option>';
-      opts += '<option value="GE_ELEC_69_ALL">(1.2.1) วิชาศึกษาทั่วไปเลือก รวมทั้ง 3 กลุ่มย่อย (Digital / Global / AI — 24 วิชา)</option>';
+      opts += '<option value="GE_ELEC_69_ALL">(1.2.1) วิชาศึกษาทั่วไปเลือก รวมทั้ง 3 กลุ่มย่อย (Digital / Global / AI — 25 วิชา)</option>';
       opts += '</optgroup>';
       opts += '<optgroup label="แยกตามกลุ่มย่อยของวิชาศึกษาทั่วไปเลือก (1.2.1)">';
       opts += '<option value="GE_Elective_Digital">• กลุ่มทักษะความเข้าใจและการใช้เทคโนโลยีดิจิทัล (Digital Literacy — 5 วิชา)</option>';
-      opts += '<option value="GE_Elective_Global">• กลุ่มทักษะการเป็นพลเมืองโลก (Global Citizen — 16 วิชา)</option>';
+      opts += '<option value="GE_Elective_Global">• กลุ่มทักษะการเป็นพลเมืองโลก (Global Citizen — 17 วิชา)</option>';
       opts += '<option value="GE_Elective_AI">• กลุ่มทักษะการประยุกต์ใช้ปัญญาประดิษฐ์ (Artificial Intelligence — 3 วิชา)</option>';
       opts += '</optgroup>';
       opts += '<optgroup label="ทั้งหมดในหมวดศึกษาทั่วไป">';
